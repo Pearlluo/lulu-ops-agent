@@ -56,6 +56,32 @@ flowchart TD
 
     PLAN --> UI["Streamlit Ops Center<br/>Dashboard · Ask LuLu (chat) · Agent Trace"]
     UI --> LOOP["Chat-driven optimisation loop<br/>trace log → bug inbox → regression cases"]
+
+    classDef source fill:#4A90D9,stroke:#2C5F8A,color:#fff
+    classDef bronze fill:#c98a4b,stroke:#8a5a2a,color:#fff
+    classDef silver fill:#9aa5b1,stroke:#5f6b78,color:#fff
+    classDef gold fill:#E8A838,stroke:#B87E20,color:#fff
+    classDef lake fill:#2C3E50,stroke:#1A252F,color:#fff
+    classDef guard fill:#D64550,stroke:#96222c,color:#fff
+    classDef tools fill:#27AE60,stroke:#1A7A42,color:#fff
+    classDef brain fill:#8E44AD,stroke:#5E2D73,color:#fff
+    classDef helper fill:#F39C12,stroke:#B07D0E,color:#fff
+    classDef ui fill:#12958a,stroke:#0b4f4a,color:#fff
+
+    class OPMS,SP source
+    class BR bronze
+    class SV silver
+    class GD gold
+    class BLOB lake
+    class REG,VAL,DUCK guard
+    class TOOLS tools
+    class DET,LLM brain
+    class ER,MEM helper
+    class UI,LOOP ui
+
+    style DATA fill:#eef4fb,stroke:#4A90D9,color:#1e3a5f
+    style CHAIN fill:#fdeeef,stroke:#D64550,color:#7a1417
+    style PLAN fill:#f3ecf8,stroke:#8E44AD,color:#3d2e80
 ```
 
 ---
