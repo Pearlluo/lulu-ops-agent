@@ -1,0 +1,111 @@
+# automation_registry.yaml — Lulu's knowledge of every GitHub automation/workflow project.
+#
+# `business:` and `logic:` blocks are HAND-MAINTAINED; `live:` blocks are
+# MACHINE-REFRESHED by `python sync_github_registry.py` — do not hand-edit.
+# Consumed by tools/automation_tool.py (list / detail / find / runs).
+#
+# This public copy ships two ILLUSTRATIVE entries so the knowledge tool runs;
+# point github_owner at your org and re-sync to populate it for real.
+version: 1
+github_owner: your-github-org
+generated_from: sync_github_registry.py (gh CLI)
+last_synced: '2026-07-01T00:00:00Z'
+automations:
+  resume_weekly_sync:
+    repo: resume-sync-automation
+    display_name: Resume Weekly Sync
+    business:
+      category: Automation / AI
+      description: Automated weekly resume synchronisation pipeline.
+      purpose: 'Keeps the resume repository in Azure Blob Storage in sync with the
+        HR system''s employee documents on a weekly schedule.
+        '
+      stack:
+      - Python
+      - Azure Functions
+      - Azure Blob Storage
+      azure_services:
+      - Azure Functions
+      - Azure Blob Storage
+      apis:
+      - Rostering system API
+      deployment: Azure Function (timer trigger, weekly schedule)
+      related_systems:
+      - AI Resume Search Portal
+      tool_candidates:
+      - sync_resumes()
+      - check_last_sync_status()
+      keywords:
+      - resume
+      - resume sync
+      - weekly sync
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-01T00:00:00Z'
+      workflows:
+      - file: deploy.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: resume-sync-function
+      latest_run:
+        workflow: Deploy to Azure Function App
+        title: Update sync window
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-01T00:10:00Z'
+        url: https://github.com/your-github-org/resume-sync-automation/actions
+    logic:
+      schedule: Azure Function timer, Sundays 18:00 UTC
+      matching:
+      - Latest resume per employee = max(last_modified_date, created_date), fallback item id
+      rules:
+      - Text extracted (PyMuPDF for PDF, python-docx for DOCX)
+  weekly_timesheet:
+    repo: weekly-timesheet-automation
+    display_name: Weekly Timesheet Automation
+    business:
+      category: Automation / Reporting
+      description: Weekly actual-hours calculation and report email.
+      purpose: 'Matches rostering-system timesheet entries against SharePoint rosters,
+        subtracts mid-shift gap time, emails an Excel report and writes actual hours back.
+        '
+      stack:
+      - Python
+      - Microsoft Graph
+      azure_services:
+      - Azure Functions
+      apis:
+      - Rostering system API
+      - Microsoft Graph
+      deployment: Azure Function (timer trigger, Mondays)
+      related_systems:
+      - Gap Time Tracker
+      tool_candidates:
+      - get_last_report_status()
+      keywords:
+      - timesheet
+      - weekly report
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-01T00:00:00Z'
+      workflows:
+      - file: deploy.yml
+        triggers:
+        - push:main
+        deploys_to: timesheet-function
+      latest_run:
+        workflow: Deploy
+        title: Adjust gap rules
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-01T00:10:00Z'
+        url: https://github.com/your-github-org/weekly-timesheet-automation/actions
+    logic:
+      schedule: Azure Function timer, Mondays 02:00 AWST
+      matching:
+      - Actual hours = roster hours minus sign-out/sign-in gap per day
+      rules:
+      - Gaps spanning midnight are split; gaps over 6h across days ignored

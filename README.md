@@ -6,6 +6,20 @@ A production AI operations agent for a labour-hire / mining-services business. A
 
 ---
 
+## Screenshots
+
+> All data shown is synthetic demo data — the screenshots were taken against a generated fake lake (people, clients, sites, counts are illustrative).
+
+### Operations Dashboard — KPIs, issue queue, Workforce Command Center
+
+![Operations Dashboard](docs/screenshots/01-ops-dashboard.png)
+
+### Ask Lulu — deterministic engine answering through the security chain, with trace & feedback
+
+![Ask Lulu](docs/screenshots/02-ask-lulu.png)
+
+---
+
 ## Architecture
 
 ```mermaid

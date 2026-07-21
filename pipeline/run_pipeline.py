@@ -92,8 +92,11 @@ def main():
         step("Extract FDS lists",   ["extract_sharepoint_bms.py", "--site", "FDS"])  # -> gold fds_* tables
         step("Upload Bronze",       ["upload_to_blob.py"])
 
-    step("Build Silver + Gold", ["build_silver_gold.py"])
+    # flat mirrors FIRST: several gold builders (inventory_summary, rate_card,
+    # licence_register, ppe_transactions, ...) read silver/flat via read_flat();
+    # in a fresh container they silently built empty when flat came second.
     step("Build Silver flat",   ["build_silver_flat.py"])
+    step("Build Silver + Gold", ["build_silver_gold.py"])
     step("Quality Gate",        ["pipeline_guard.py"])     # anti-leak: FAIL on empty critical Gold
     step("Link Health",         ["check_links.py", "--repair"])  # audit + auto-fix stale folder links (backed up, idempotent); -> data/agent/link_health.json
 
