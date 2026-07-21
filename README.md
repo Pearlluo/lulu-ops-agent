@@ -14,9 +14,13 @@ A production AI operations agent for a labour-hire / mining-services business. A
 
 ![Operations Dashboard](docs/screenshots/01-ops-dashboard.png)
 
-### Ask Lulu — deterministic engine answering through the security chain, with trace & feedback
+### Ask Lulu — the operational answer contract: freshness, risk banners, next actions, trace & feedback
 
 ![Ask Lulu](docs/screenshots/02-ask-lulu.png)
+
+### System Galaxy — live map of every agent, system and alert in the estate
+
+![System Galaxy](docs/screenshots/03-system-galaxy.png)
 
 ---
 

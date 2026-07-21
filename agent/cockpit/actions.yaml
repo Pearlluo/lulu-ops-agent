@@ -1,0 +1,116 @@
+# cockpit/actions.yaml — repair-action CATALOGUE (the whitelist the Action Console runs from).
+#
+# P2 Repair Control Layer. NOTHING here is invented by the LLM: action_runner.py only ever runs
+# a `runs:` script (with the EXACT args defined here) or a named internal `handler:`. The issue
+# stream and the user pick WHICH action; the command itself is fixed in this file.
+#
+# `safety` drives the UI:
+#   safe_auto      -> can run on click (read-only / no production write)
+#   needs_approval -> dry-run/preview first, then a mock Approve/Reject gate, then execute
+#   manual_only    -> no execution; only "create manual task / export list / mark manual"
+#
+# Schema per action:
+#   label              human label shown on the button
+#   issue_type         which issue.type this fixes (display/match only)
+#   entity             which business entity it acts on (optional)
+#   node               which system node (optional)
+#   safety             safe_auto | needs_approval | manual_only
+#   writes             true if it writes production data (SharePoint/lake/Xero)
+#   requires_approval  true => execute is refused unless approved=True is passed
+#   runs               script filename to subprocess (relative to `cwd`); omit for handler actions
+#   cwd                api  -> data/Raw Data/API   |  agent -> data/agent   (where `runs` lives)
+#   handler            internal python handler name (action_runner._HANDLERS); omit for script actions
+#   modes              allowed modes: [execute] read-only, or [dry_run, execute] for writes
+#   dry_run_args       argv appended to the script for a preview run (writes nothing)
+#   execute_args       argv appended to the script for the real run
+#   backup             file the real run backs originals up to (shown in the confirm panel)
+#   rollback           how to undo (human instruction)
+#   description        what the action does + what it will change (shown in the confirm panel)
+
+actions:
+
+  # ---- safe read-only tools (P2.2) — available on most issues, never write production ----
+  recheck_folder_links:
+    label: "Re-check folder links"
+    issue_type: broken_folder_link
+    entity: jms_jobs
+    node: bms
+    safety: safe_auto
+    writes: false
+    requires_approval: false
+    runs: "check_links.py"
+    cwd: api
+    modes: [execute]
+    description: "Live re-audit of every JMS folder link against SharePoint and rewrite link_health.json. Read-only — touches no folders or permissions."
+
+  rerun_data_quality_sentinel:
+    label: "Re-run data quality sentinel"
+    issue_type: data_freshness
+    entity: data_quality
+    node: lake
+    safety: safe_auto
+    writes: false
+    runs: "data_quality_sentinel.py"
+    cwd: agent
+    modes: [execute]
+    description: "Re-run all data-quality checks against the current Gold layer and refresh the sentinel report. Read-only."
+
+  rebuild_issue_registry:
+    label: "Rebuild issue registry"
+    issue_type: any
+    safety: safe_auto
+    writes: false
+    handler: rebuild_issue_registry
+    modes: [execute]
+    description: "Re-read the mock/source issue stream + re-enrich data-backed issues from Gold. Read-only; refreshes what the cockpit shows."
+
+  validate_affected_records:
+    label: "Validate affected records"
+    issue_type: any
+    safety: safe_auto
+    writes: false
+    handler: validate_affected_records
+    modes: [execute]
+    description: "Re-count this issue's affected records from its live source (Gold parquet) and compare to the reported count. Read-only."
+
+  export_affected_records:
+    label: "Export affected records list"
+    issue_type: any
+    safety: safe_auto
+    writes: false
+    handler: export_affected_records
+    modes: [execute]
+    description: "Write this issue's affected-record evidence to a CSV under logs/exports/ for manual follow-up. Writes a report file only — no production data."
+
+  # ---- the P2.4 pilot: the FIRST real repair (broken folder links) ----
+  repair_folder_links:
+    label: "Repair folder links"
+    issue_type: broken_folder_link
+    entity: jms_jobs
+    node: bms
+    safety: needs_approval
+    writes: true
+    requires_approval: true
+    runs: "check_links.py"
+    cwd: api
+    modes: [dry_run, execute]
+    dry_run_args: ["--repair", "--dry-run"]
+    execute_args: ["--repair"]
+    backup: "logs/link_repair_backup.jsonl"
+    rollback: "Restore each old_value from logs/link_repair_backup.jsonl back into the SharePoint list field."
+    description: "For each BROKEN link, look the folder up by its embedded item-ID and rewrite ONLY the URL part of the cell to the folder's current location. Folder ID, metadata and permission emails are preserved byte-for-byte; no folder is created/moved and no permission is changed. Every original is backed up first."
+
+  # ---- other repairs: defined but NOT wired to execution yet (manual / future phases) ----
+  rerun_daily_brief:        {label: "Re-run daily brief",          issue_type: data_freshness,   entity: data_quality,     node: lake,      safety: safe_auto,      writes: false, handler: not_implemented, modes: [execute], runs_ref: "daily_brief.py --no-email", description: "Re-run the daily brief to refresh today's snapshot. (Not wired to execution yet — manual for now.)"}
+  map_client_bridge:        {label: "Rebuild client bridge",       issue_type: missing_field,    entity: jms_jobs,         node: bms,       safety: safe_auto,      writes: false, handler: not_implemented, modes: [execute], runs_ref: "build_silver_gold.py (project_bridge)", description: "Rebuild project_bridge with the manual_map fallback. (Not wired to execution yet.)"}
+  book_cert_renewals:       {label: "Book cert renewals",          issue_type: expired_certificate, entity: certificates, node: opms,      safety: needs_approval, writes: false, handler: manual_task,     modes: [execute], description: "Book renewals for the certificates expiring this week. Manual task for HR/Compliance."}
+  notify_cert_expiry:       {label: "Email expiry reminders",      issue_type: expired_certificate, entity: certificates, node: opms,      safety: needs_approval, writes: false, handler: manual_task,     modes: [execute], description: "Draft renewal-reminder emails to supervisors. (No real email is sent — creates a manual task / draft only.)"}
+  rebuild_invoice_register: {label: "Rebuild invoice_register",    issue_type: finance_mismatch, entity: invoice_register, node: xero,      safety: needs_approval, writes: true,  handler: not_implemented, modes: [dry_run, execute], runs_ref: "build_silver_gold.py (invoice_register)", description: "Rebuild the invoice_register Gold table once Xero data refreshes. (Not wired — manual for now.)"}
+  backfill_roster_date:     {label: "Backfill roster_date",        issue_type: missing_field,    entity: roster,           node: opms,      safety: needs_approval, writes: true,  handler: not_implemented, modes: [dry_run, execute], description: "Backfill missing roster_date from the source window during rebuild. (Not wired — manual for now.)"}
+  refresh_flat_layer:       {label: "Refresh silver/flat layer",   issue_type: data_freshness,   entity: silver_tables,    node: lake,      safety: needs_approval, writes: true,  handler: not_implemented, modes: [dry_run, execute], runs_ref: "build_silver_flat.py", description: "Re-run build_silver_flat.py once the OOM fix is confirmed. (Not wired — manual for now.)"}
+  recheck_xero:             {label: "Re-check Xero access",        issue_type: failed_sync,      entity: invoice_register, node: xero,      safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Restore Xero API access, then re-sync the OpsDB mirror. Manual."}
+  grant_site_access:        {label: "Grant SharePoint site access", issue_type: permission_issue, entity: bms_permissions, node: bms,       safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Grant the app principal Sites.Selected access to the two blocked sites. Manual Admin_IT task."}
+  review_missing_docs:      {label: "Review missing documents",    issue_type: missing_document, entity: missing_documents, node: ims,      safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Chase the jobs' supervisors for signed safety documents. Manual."}
+  investigate_oom:          {label: "Investigate refresh OOM",     issue_type: failed_sync,      entity: daily_jobs,       node: functions, safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Stream FDD-FormInbox in chunks instead of loading the whole file. Manual dev task."}
+  review_fdd_size:          {label: "Review FDD inbox size",       issue_type: data_freshness,   entity: forms,            node: fds,       safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Chunk + index FDD-FormInbox into the planned RAG store. Manual."}
+  review_ar:                {label: "Review receivables",          issue_type: finance_mismatch, entity: ar_aging,         node: xero,      safety: manual_only,    writes: false, handler: manual_task, modes: [execute], description: "Review the aged-receivables list with Finance. Manual."}

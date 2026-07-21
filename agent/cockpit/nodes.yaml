@@ -1,0 +1,20 @@
+# cockpit/nodes.yaml — node universe for the Command Matrix.
+# Keys MUST match command_center.html SYS/AGENTS keys, or issues won't attach to a node.
+nodes:
+  # --- agents (4) ---
+  ops:  {label: "Operations Agent", type: agent, agent: ops,  business_purpose: "Pipelines, automations, Azure infrastructure health"}
+  biz:  {label: "Business Agent",   type: agent, agent: biz,  business_purpose: "People, roster, timesheet, project, training, risk"}
+  fin:  {label: "Finance Agent",    type: agent, agent: fin,  business_purpose: "Payroll, rates, invoices, receivables"}
+  file: {label: "File Agent",       type: agent, agent: file, business_purpose: "Documents, IMS/FDS forms, folder links"}
+  # --- systems (11) ---
+  opms: {label: "OPMS",          type: data_source, agent: biz,  business_purpose: "Workforce / roster / timesheet master data", depends_on: [blob]}
+  bms:  {label: "BMS",           type: data_source, agent: biz,  business_purpose: "Jobs / projects / people lists (SharePoint)",  depends_on: [flows]}
+  lake: {label: "Data Lake",     type: platform,    agent: biz,  business_purpose: "Gold tables the agent queries"}
+  blob: {label: "Azure Blob",    type: platform,    agent: ops,  business_purpose: "Rates / resume storage"}
+  functions: {label: "Azure Functions", type: automation, agent: ops, business_purpose: "Nightly refresh + automations"}
+  sql:  {label: "OpsDB",       type: platform,    agent: ops,  business_purpose: "Serverless SQL for automations"}
+  flows: {label: "Power Automate", type: automation, agent: ops, business_purpose: "Folder / sync flows"}
+  ims:  {label: "IMS",           type: data_source, agent: file, business_purpose: "Job folder file storage"}
+  fds:  {label: "FDS",           type: data_source, agent: file, business_purpose: "Form distribution"}
+  papp: {label: "Power Apps",    type: automation,  agent: file, business_purpose: "Forms front-end"}
+  xero: {label: "Xero",          type: data_source, agent: fin,  business_purpose: "Payroll / invoice source"}

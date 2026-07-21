@@ -1,0 +1,6 @@
+# cockpit/agents.yaml — the 4 specialist agents and the systems each manages.
+agents:
+  ops:  {label: "Operations Agent", systems: [functions, flows, blob, sql, lake]}
+  biz:  {label: "Business Agent",   systems: [bms, opms]}
+  fin:  {label: "Finance Agent",    systems: [xero]}
+  file: {label: "File Agent",       systems: [ims, fds, papp]}

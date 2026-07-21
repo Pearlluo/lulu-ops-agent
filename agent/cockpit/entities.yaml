@@ -1,0 +1,47 @@
+# cockpit/entities.yaml — 3rd drill level. Agent -> System -> ENTITY (real business objects).
+# Keys are clickable management units. parent_system MUST match a SYS key in command_center.html.
+entities:
+  # ---- BMS (Business) ----
+  jms_jobs:        {label: "JMS-Jobs",            parent_system: bms,  agent: biz,  type: table,           business_purpose: "Master job register (1,551 jobs) — client, status, folder links"}
+  jms_projects:    {label: "JMS-Projects",        parent_system: bms,  agent: biz,  type: table,           business_purpose: "Project register (216) linking jobs to clients"}
+  commercial_tendering: {label: "Commercial Tendering", parent_system: bms, agent: biz, type: module,      business_purpose: "Tender & commercial documents"}
+  folder_links:    {label: "Folder Links",        parent_system: bms,  agent: file, type: workflow,        business_purpose: "SharePoint folder-link integrity for jobs"}
+  bms_permissions: {label: "Permissions",         parent_system: bms,  agent: file, type: workflow,        business_purpose: "App / user access to BMS SharePoint sites"}
+  # ---- OPMS (Business) ----
+  employers:       {label: "Employers",           parent_system: opms, agent: biz,  type: table,           business_purpose: "Employer entities (57)"}
+  employees:       {label: "Employees",           parent_system: opms, agent: biz,  type: table,           business_purpose: "Worker master records (2,065)"}
+  roster:          {label: "Roster",              parent_system: opms, agent: biz,  type: table,           business_purpose: "Scheduled assignments by worker x date"}
+  timesheets:      {label: "Timesheets",          parent_system: opms, agent: biz,  type: table,           business_purpose: "Actual worked hours"}
+  certificates:    {label: "Certificates",        parent_system: opms, agent: biz,  type: business_entity, business_purpose: "Worker tickets/competencies & expiry compliance"}
+  # ---- Data Lake (Business) ----
+  gold_tables:     {label: "Gold Tables",         parent_system: lake, agent: biz,  type: table,           business_purpose: "22 query-ready denormalised tables"}
+  silver_tables:   {label: "Silver Tables",       parent_system: lake, agent: ops,  type: table,           business_purpose: "Modelled dim/fact + 1:1 mirrors"}
+  data_quality:    {label: "Data Quality",        parent_system: lake, agent: ops,  type: module,          business_purpose: "Sentinel checks: freshness, nulls, row stability"}
+  # ---- Xero (Finance) ----
+  invoice_register: {label: "Invoice Register",    parent_system: xero, agent: fin,  type: table,           business_purpose: "Xero invoices (ACCREC revenue / ACCPAY bills)"}
+  suppliers:       {label: "Suppliers",           parent_system: xero, agent: fin,  type: table,           business_purpose: "Supplier / payee records"}
+  ar_aging:        {label: "AR Aging",            parent_system: xero, agent: fin,  type: business_entity, business_purpose: "Outstanding receivables by age bucket"}
+  project_billing: {label: "Project Billing",     parent_system: xero, agent: fin,  type: module,          business_purpose: "Revenue by project / client"}
+  # ---- IMS (File) ----
+  file_storage:    {label: "File Storage",        parent_system: ims,  agent: file, type: file_area,       business_purpose: "Job folder documents"}
+  missing_documents: {label: "Missing Documents",  parent_system: ims,  agent: file, type: workflow,        business_purpose: "Required docs not yet filed"}
+  folder_index:    {label: "Folder Index",        parent_system: ims,  agent: file, type: module,          business_purpose: "Index of job folders"}
+  # ---- FDS (File) ----
+  forms:           {label: "Forms",               parent_system: fds,  agent: file, type: module,          business_purpose: "Distributed forms"}
+  approvals:       {label: "Approvals",           parent_system: fds,  agent: file, type: workflow,        business_purpose: "Form approval flow"}
+  submissions:     {label: "Submissions",         parent_system: fds,  agent: file, type: table,           business_purpose: "Submitted form data"}
+  # ---- Power Apps (File) ----
+  app_screens:     {label: "App Screens",         parent_system: papp, agent: file, type: module,          business_purpose: "Power Apps screens"}
+  form_frontend:   {label: "Form Front-end",      parent_system: papp, agent: file, type: module,          business_purpose: "Form capture UI"}
+  # ---- Azure Blob (Operations) ----
+  containers:      {label: "Containers",          parent_system: blob, agent: ops,  type: file_area,       business_purpose: "3 storage containers"}
+  uploads:         {label: "Uploads",             parent_system: blob, agent: ops,  type: workflow,        business_purpose: "Inbound uploads"}
+  raw_files:       {label: "Raw Files",           parent_system: blob, agent: ops,  type: file_area,       business_purpose: "Raw rates / resume files"}
+  # ---- OpsDB (Operations) ----
+  sql_tables:      {label: "SQL Tables",          parent_system: sql,  agent: ops,  type: table,           business_purpose: "Serverless SQL tables"}
+  refresh_jobs:    {label: "Refresh Jobs",        parent_system: sql,  agent: ops,  type: workflow,        business_purpose: "Scheduled refresh jobs"}
+  schema_health:   {label: "Schema Health",       parent_system: sql,  agent: ops,  type: module,          business_purpose: "Schema-drift checks"}
+  # ---- Azure Functions (Operations) ----
+  daily_jobs:      {label: "Daily Jobs",          parent_system: functions, agent: ops, type: workflow,    business_purpose: "Nightly refresh jobs"}
+  repair_jobs:     {label: "Repair Jobs",         parent_system: functions, agent: ops, type: workflow,    business_purpose: "Automated repair jobs (future)"}
+  sync_jobs:       {label: "Sync Jobs",           parent_system: functions, agent: ops, type: workflow,    business_purpose: "Folder / data sync jobs"}
