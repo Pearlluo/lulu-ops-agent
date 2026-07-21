@@ -1,0 +1,27 @@
+# Secrets & users — NEVER commit
+.env
+.env.*
+!.env.example
+users.yaml
+credential/
+
+# Data lake & runtime state — never in git
+bronze/
+silver/
+gold/
+logs/
+memory/
+*.parquet
+*.ndjson
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

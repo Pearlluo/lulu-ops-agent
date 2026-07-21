@@ -1,0 +1,37 @@
+# model_registry.yaml — LuluAgent LLM Gateway registry.
+# WHAT runs WHERE: role defaults + provider connection config.
+# Runtime overrides live in admin_settings.json (what the admin panel writes) — that file wins.
+# Switching brains = edit config. No business logic (tools/validator/Gold) ever changes.
+version: 1
+
+roles:
+  # The reasoning model: understands the question, picks tools, drives the loop.
+  planner:
+    provider: anthropic
+    model: claude-opus-4-8
+
+  # The answer model: polishes tool evidence into the final reply (the admin's Plan B: cheap answerer).
+  # If this provider has no API key configured, the gateway gracefully falls back to the
+  # planner's own draft — two-stage is an upgrade, never a hard dependency.
+  answer:
+    provider: deepseek
+    model: deepseek-chat
+
+  # Used when the planner provider errors (auth/rate-limit/outage).
+  fallback:
+    provider: openai
+    model: gpt-5-mini
+
+providers:
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    # native tool-use; adaptive thinking auto-enabled on 4.6+; temperature unsupported on 4.7+/4.8 (ignored)
+  openai:
+    api_key_env: OPENAI_API_KEY
+    base_url: https://api.openai.com/v1
+  deepseek:
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com        # OpenAI-compatible chat completions
+  # local:
+  #   api_key_env: LOCAL_LLM_KEY
+  #   base_url: http://localhost:11434/v1     # any OpenAI-compatible server (ollama/vllm) plugs in here

@@ -1,0 +1,142 @@
+# Regression cases promoted from real chat (regression_from_chat.py).
+# Every bug found in conversation gets a case here so it can never silently return.
+cases:
+- id: acme-group-schedule-last-week
+  input: 上个礼拜的 Acme Group 的时间表
+  expected:
+    domain: Roster
+    tool: roster
+    function: get_roster_summary
+    time_range: last_week
+    entity: site:Acme Group
+    not_clarification: true
+  origin: chat 2026-06-11 (the screenshot bug)
+  added: '2026-06-11'
+- id: acme-timesheet-last-week
+  input: 上个礼拜acme 的Timesheet
+  expected:
+    domain: Time
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    not_clarification: true
+  origin: chat 2026-06-11 (the screenshot bug)
+  added: '2026-06-11'
+- id: english-timesheet-last-week
+  input: last week timesheet
+  expected:
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: which-client-job-code-cn
+  input: SH-26052是哪个客户的项目?
+  expected:
+    tool: project
+    function: resolve_project_client
+    args_contains:
+      term: sh-26052
+    not_clarification: true
+  origin: chat 2026-06-11 (ProjectID bridge)
+  added: '2026-06-11'
+- id: which-client-job-code-en
+  input: which client is SH-25006 for?
+  expected:
+    tool: project
+    function: resolve_project_client
+    args_contains:
+      term: SH-25006
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: deployable-not-automation
+  input: who is available for work right now?
+  expected:
+    tool: insight
+    function: find_deployable_workers
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: automation-estate-list
+  input: 我们有哪些自动化系统?
+  expected:
+    tool: automation
+    function: list_automations
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: automation-run-status
+  input: 上周的timesheet automation 跑成功了吗?
+  expected:
+    tool: automation
+    function: get_automation_runs
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: monthly-hours-unchanged
+  input: How many hours did worker 6 work in 2024-04?
+  expected:
+    tool: timesheet
+    function: get_worker_hours
+    args_contains:
+      worker_id: '6'
+      month: 2024-04
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: roster-last-week-cn
+  input: 上周谁在排班?
+  expected:
+    tool: roster
+    function: get_roster_summary
+    time_range: last_week
+    not_clarification: true
+  origin: manual
+  added: '2026-06-11'
+- id: acmegroup-entity-resolution
+  input: 上个礼拜 site=Acmegroup, 所有人的 timesheet
+  expected:
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    args_contains:
+      site: Acme Group
+    not_clarification: true
+  origin: chat 2026-06-11 (Search Layer bug — 'Acmegroup' returned 0 rows)
+  added: '2026-06-11'
+- id: mg-alias-resolution
+  input: MG 上周的timesheet
+  expected:
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    args_contains:
+      site: Acme Group
+    not_clarification: true
+  origin: manual (alias map)
+  added: '2026-06-11'
+- id: person-entity-resolution
+  input: Carter上周的timesheet
+  expected:
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    args_contains:
+      worker_name: CARTER
+    not_clarification: true
+  origin: manual (person resolution)
+  added: '2026-06-11'
+- id: everyone-timesheet-matrix
+  input: 上个礼拜site= Acme Group ,所有人的timesheet
+  expected:
+    tool: timesheet
+    function: get_weekly_timesheet
+    time_range: last_week
+    args_contains:
+      site: Acme Group
+      group_by: matrix
+    not_clarification: true
+  origin: 'chat 2026-06-11 (Admin: use the weekly-report Excel layout — person rows x day DS/NS columns)'
+  added: '2026-06-11'

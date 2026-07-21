@@ -1,0 +1,520 @@
+# agent_registry.yaml — Lulu Agent semantic layer over the Gold lake.
+# Controlled-SQL design: the agent classifies a domain, picks ONE registered Gold table,
+# uses ONLY allowed_fields, builds SQL from business_definitions, validates, runs on DuckDB.
+# Free-form/unrestricted SQL is NOT permitted. Restricted fields require an elevated role.
+version: 1
+updated: "2026-06-10"
+data_source:
+  engine: duckdb
+  location: "Azure Blob container 'lulu-data', prefix gold/"
+  table_uri_pattern: "read_parquet('az://lulu-data/gold/<table>.parquet')"   # or local gold/<table>.parquet
+  rule: "Query the GOLD layer only. Never query bronze/ or silver/ from the agent."
+
+# ---- roles that unlock restricted fields ----
+roles:
+  default:           "operational read; PII/financial/HR-restricted fields hidden"
+  HR_Manager:        "unlocks PII (DOB, personal contact), HR-restricted (rankings, classified)"
+  Finance:           "unlocks commercial/financial (rates, purchase amounts, ABN)"
+  Admin_IT:          "unlocks audit value_before/value_after"
+
+# ---- cross-table join keys (only joins explicitly listed here are allowed) ----
+join_keys:
+  opms_employee_id: "person identity across People/Roster/Time/Training/Audit/Licence/Ranking/SiteAssignment"
+  bms_project_id:   "project across project_job_summary / job_detail / rate_card"
+  bms_client_id:    "client across project_job_summary / job_detail"
+
+# ---- global SQL validation rules (enforced before execution) ----
+sql_rules:
+  - "SELECT statements only. Reject INSERT/UPDATE/DELETE/CREATE/DROP/ALTER/ATTACH/COPY/PRAGMA."
+  - "FROM must be exactly one table registered below (or an approved join via join_keys)."
+  - "Only columns in that table's allowed_fields may appear in SELECT. Restricted fields require the matching role."
+  - "Always apply a LIMIT (default 100) unless the question is an explicit aggregate (COUNT/SUM/AVG)."
+  - "String filters use parameterised/escaped literals; prefer case-insensitive matching (ILIKE / lower())."
+  - "No subqueries against non-Gold paths; no UNION to unregistered sources."
+  - "If the needed field is restricted and the caller lacks the role -> refuse and say which role is required."
+
+# =====================================================================
+# GOLD TABLES (by business domain)
+# =====================================================================
+tables:
+
+  employee_profile:
+    domain: People
+    description: "One row per worker — identity, current position, company, ops section, supplier, status, work contact."
+    grain: opms_employee_id
+    business_questions:
+      - "Who is <name/id>? What's their role / supplier / ops section / status?"
+      - "List active workers in <position/company/ops section>."
+    allowed_fields: [opms_employee_id, person_id, first_name, last_name, preferred_name, is_active,
+                     position_name, company_name, ops_section_name, supplier_name, arrangement_type,
+                     email_work, phone_work, home_airport_code, bms_position_id, ops_section_id, bms_supplier_id]
+    restricted_fields:
+      date_of_birth: {role: HR_Manager, reason: PII}
+      gender_name:   {role: HR_Manager, reason: PII}
+      nationality_name: {role: HR_Manager, reason: PII}
+      middle_name:   {role: HR_Manager, reason: PII}
+    security_rules: ["Never return DOB/gender/nationality without HR_Manager role.",
+                     "Coverage caveat: position/supplier/ops_section only populate for the ~446 workers also in BMS."]
+
+  training_compliance:
+    domain: People / Compliance
+    description: "One row per worker x competency/cert — status, expiry, days-to-expiry, expired/expiring flags."
+    grain: training_record_id
+    business_questions:
+      - "Whose tickets are expired or expiring in N days?"
+      - "Is <worker> compliant / can they be deployed for <competency>?"
+      - "How many valid/expired certs does <worker> hold?"
+    allowed_fields: [training_record_id, opms_employee_id, first_name, last_name, competency_name, group_name,
+                     status, issue_date, expiry_date, validity_years, days_to_expiry, is_expired,
+                     is_expiring_soon, has_document, document_number, arrangement_type, is_active]
+    restricted_fields:
+      classified: {role: HR_Manager, reason: HR-restricted competency flag}
+    business_definitions:
+      expired:        "is_expired = true"
+      expiring_soon:  "is_expiring_soon = true   # within 90 days, not yet expired"
+      valid:          "is_expired = false"
+    security_rules: ["This is the deployment-eligibility table; prefer it for any 'can X work / is X compliant' question."]
+
+  roster_summary:
+    domain: Roster
+    description: "Worker x date scheduled assignment (OPMS + BMS rosters), with position/work type/project/hours."
+    grain: [opms_employee_id, roster_date]
+    business_questions:
+      - "Who is rostered on <date> / at <project>?"
+      - "What is <worker> rostered to over <period>?"
+    allowed_fields: [opms_employee_id, first_name, last_name, roster_date, position_name, work_type_name,
+                     project_name, client_name, hours, source]
+    restricted_fields: {}
+    security_rules: ["`source` = 'opms' or 'bms'; both systems' rosters are unioned here.
+      `client_name` is resolved via the project_bridge (job-code prefix -> JMS-Jobs -> JMS-Projects)."]
+
+  weekly_timesheet:
+    domain: Time
+    description: "Worker x date ACTUAL worked hours — port of the GitHub weekly-timesheet
+      automation: OPMS actual hours replace roster hours when matched, minus gap deductions
+      from the sign-out/sign-in form; Z.* plant lines at TRANSPORT & HIRE excluded.
+      Prefer this over roster_summary/timesheet_summary for 'timesheet for <week/date-range>'."
+    grain: [opms_employee_id, work_date]
+    business_questions:
+      - "What is the timesheet for last week / <date range>?"
+      - "How many actual hours did <worker> work last week / on <date>?"
+      - "Weekly DS/NS hours per worker / project / site?"
+    allowed_fields: [opms_employee_id, first_name, last_name, position_name, project_name, client_name,
+                     site_name, supplier_name, work_date, shift_type, roster_hours, gap_hours,
+                     actual_hours, hours_source]
+    restricted_fields: {}
+    security_rules: ["actual_hours = max(0, roster_hours - gap_hours). `hours_source`:
+      'opms' = matched OPMS actuals, 'bms_writeback' = last SharePoint value, 'none' = no hours."]
+
+  timesheet_summary:
+    domain: Time
+    description: "Hours worked aggregated by worker x site x month."
+    grain: [opms_employee_id, site_id, month]
+    business_questions:
+      - "How many hours did <worker> work in <month>?"
+      - "Total hours at <site> in <period>?"
+    allowed_fields: [opms_employee_id, first_name, last_name, site_id, site_name, month, total_hours, entry_count]
+    restricted_fields: {}
+    security_rules: ["`total_hours` is an aggregate, not a pay rate — safe to return."]
+
+  project_bridge:
+    domain: Project
+    description: "OPMS<->BMS project/client bridge (port of the GitHub rates pipeline): an OPMS
+      project string's job-code prefix ('SH-25006 - July FPS' -> 'SH-25006') keys into
+      JMS-Jobs.JobID -> JMS-Projects -> client. Plus hand-maintained manual_map rows.
+      Use to answer 'which client does project/job X belong to'."
+    grain: [job_code, source]
+    business_questions:
+      - "Which client is project/job <code or name> for?"
+      - "What BMS project does OPMS project <name> map to?"
+    allowed_fields: [job_code, job_title, bms_project_id, project_name, client_code, client_name,
+                     opms_project_name, source]
+    restricted_fields: {}
+    security_rules: ["`source` = 'jms_bridge' (derived from JMS lists) or 'manual_map'
+      (Project_Client_Map.csv); manual_map wins for exact OPMS project-name matches."]
+
+  project_job_summary:
+    domain: Project
+    description: "One row per project — client, status, job counts."
+    grain: bms_project_id
+    business_questions:
+      - "How many jobs (active) under <project> / <client>?"
+      - "Which projects belong to <client>?"
+    allowed_fields: [bms_project_id, project_name, project_code, status, is_active, bms_client_id,
+                     client_name, ops_section_id, project_start_date, job_count, active_job_count]
+    restricted_fields: {}
+
+  job_detail:
+    domain: Project
+    description: "One row per job — project, client, work location, MG lead, status (names resolved)."
+    grain: bms_job_id
+    business_questions:
+      - "Tell me about job <code>: project, client, location, lead, status."
+      - "List active jobs for <client> / <work location>."
+    allowed_fields: [bms_job_id, job_title, job_code, job_status, is_active, project_name, client_name,
+                     lead_first_name, lead_last_name, work_location_name, ops_section_name, is_overhead, modified_at]
+    restricted_fields: {}
+
+  asset_register:
+    domain: Asset
+    description: "Plant/equipment assets — status, model, manufacturer, location, group."
+    grain: bms_asset_id
+    business_questions: ["Status/location of asset <id/name>?", "List assets by group/location/status."]
+    allowed_fields: [bms_asset_id, asset_name, asset_id, status, model, serial_number, manufacturer_name,
+                     location_name, asset_group_name, is_active]
+    restricted_fields: {}
+
+  hardware_register:
+    domain: Asset / IT
+    description: "Hardware items — code, status, stock count, category."
+    grain: bms_hardware_id
+    business_questions: ["Is hardware <name/code> in stock?", "Hardware by category/status."]
+    allowed_fields: [bms_hardware_id, hardware_name, code, status, in_stock, category_name, is_active]
+    restricted_fields:
+      hire_price: {role: Finance, reason: commercial}
+
+  inventory_summary:
+    domain: Inventory
+    description: "Stock on hand by item / location / category."
+    grain: bms_store_id
+    business_questions: ["Stock level of <item>?", "What's stored at <location>?"]
+    allowed_fields: [bms_store_id, item_name, stock, is_active, location_name, category_name, effective_date]
+    restricted_fields: {}
+
+  ppe_transactions:
+    domain: Inventory
+    description: "PPE/workwear movement ledger — sign-outs to people/jobs, purchases into store, store-to-store moves."
+    grain: bms_txn_id
+    business_questions: ["What PPE did <person> sign out?", "Monthly PPE usage by item/store/project?",
+                         "What arrived into <store> last month?"]
+    allowed_fields: [bms_txn_id, txn_date, txn_month, txn_kind, title, item_name, item_code, units,
+                     from_location, to_location, person_name, job_code, project_name]
+    restricted_fields: {}
+
+  hseq_register:
+    domain: HSEQ
+    description: "Safety issues & corrective actions — status, priority, due/overdue."
+    grain: bms_issue_id
+    business_questions: ["Open or overdue safety actions?", "HSEQ issues by priority/status."]
+    allowed_fields: [bms_issue_id, issue_title, issue_type, issue_status, action_priority, action_due_date,
+                     action_completed_date, is_open, is_overdue]
+    restricted_fields:
+      IssueDetail:     {role: HR_Manager, reason: free-text may contain PII}
+      ActionPlan:      {role: HR_Manager, reason: free-text}
+      CompletionNotes: {role: HR_Manager, reason: free-text}
+
+  supplier_summary:
+    domain: Supplier
+    description: "Labour suppliers and how many workers each supplies."
+    grain: bms_supplier_id
+    business_questions: ["Which suppliers, how many workers each?", "Contact for supplier <name>?"]
+    allowed_fields: [bms_supplier_id, supplier_name, is_active, phone, email, website, address, worker_count]
+    restricted_fields:
+      abn: {role: Finance, reason: commercial}
+
+  executive_snapshot:
+    domain: Executive
+    description: "One row per day — the numbers Lulu reported in that morning's brief
+      (risk combos, expiring certs, deployable pool, hours, AR…). THE table for trend
+      questions: 'risk上升了吗 / how has deployable changed this month'."
+    grain: date
+    business_questions:
+      - "How has workforce risk trended this month?"
+      - "Is the deployable pool shrinking?"
+      - "Outstanding receivables trend?"
+    allowed_fields: [date, workforce_risk, expiring_7d, expiring_30d, expired_total,
+                     deployable, idle_pool, active_projects, hours_last, hours_prev,
+                     hours_wow_change_pct, sentinel_status, roster_horizon_days,
+                     xero_age_days, ar_count, automation_failures]
+    restricted_fields:
+      ar_total:       {role: Finance, reason: financial}
+      rev_last_month: {role: Finance, reason: financial}
+    security_rules: ["Financial trend values gated by Finance role."]
+
+  invoice_register:
+    domain: Finance
+    description: "Xero invoices (from OpsDB mirror): ACCREC = revenue we bill clients,
+      ACCPAY = supplier bills. job_code mined from the invoice Reference links revenue to
+      projects (project_bridge). NOTE: Xero sync currently ends ~2026-04."
+    grain: invoice_id
+    business_questions:
+      - "Which invoices are outstanding / overdue?"
+      - "Revenue invoiced to <client> in <period>?"
+      - "Invoices for job <code>?"
+    allowed_fields: [invoice_id, invoice_number, invoice_type, status, contact_name,
+                     reference, job_code, bridge_client, invoice_date, month, due_date]
+    restricted_fields:
+      subtotal:     {role: Finance, reason: financial}
+      total:        {role: Finance, reason: financial}
+      amount_paid:  {role: Finance, reason: financial}
+      amount_due:   {role: Finance, reason: financial}
+    security_rules: ["Financial amounts require the Finance role; others see invoice
+      metadata (client/status/dates/job) only."]
+
+  revenue_summary:
+    domain: Finance
+    description: "Client x month revenue rollup (Xero ACCREC, AUTHORISED/PAID only).
+      THE table for '哪个客户收入最高 / 项目赚不赚钱' questions. Data ends ~2026-04."
+    grain: [contact_name, month]
+    business_questions:
+      - "Revenue per client this year?"
+      - "Which client generates the most revenue?"
+      - "Outstanding receivables per client?"
+    allowed_fields: [contact_name, month, invoices]
+    restricted_fields:
+      invoiced:    {role: Finance, reason: financial}
+      paid:        {role: Finance, reason: financial}
+      outstanding: {role: Finance, reason: financial}
+    security_rules: ["Amounts gated by Finance role; default role sees invoice counts only."]
+
+  purchase_summary:
+    domain: Finance
+    description: "Purchases rolled up per purchase order — supplier, invoice, totals."
+    grain: purchase_id
+    business_questions: ["Spend per supplier?", "Purchases in <period>?"]
+    allowed_fields: [purchase_id, supplier_name, invoice_date, line_count]
+    restricted_fields:
+      inv_amount:     {role: Finance, reason: financial}
+      computed_total: {role: Finance, reason: financial}
+      inv_number:     {role: Finance, reason: financial}
+    security_rules: ["This is a financial table; without Finance role return only counts/supplier/date, never amounts."]
+
+  rate_card:
+    domain: Commercial
+    description: "Charge rates by project and position (day/night)."
+    grain: bms_rate_id
+    business_questions: ["Charge rate for <position> on <project>?"]
+    allowed_fields: [bms_rate_id, rate_title, bms_project_id, project_name, project_code, bms_position_id]
+    restricted_fields:
+      day_shift_rate:   {role: Finance, reason: commercial}
+      night_shift_rate: {role: Finance, reason: commercial}
+    security_rules: ["Rates are commercial; never return day/night rates without Finance role."]
+
+  site_assignment:
+    domain: Workforce
+    description: "Who works where — worker x site x position x team (OPMS)."
+    grain: [opms_employee_id, opms_site_id]
+    business_questions: ["Who works at <site>?", "Where is <worker> assigned (site/position/team)?"]
+    allowed_fields: [opms_employee_id, first_name, last_name, opms_position_id, position_name,
+                     opms_site_id, site_name, team_name]
+    restricted_fields: {}
+
+  licence_register:
+    domain: Compliance
+    description: "Licences held by workers (BMS)."
+    grain: bms_licence_id
+    business_questions: ["Which licences does <worker> hold?"]
+    allowed_fields: [bms_licence_id, first_name, last_name, opms_employee_id, licence, licence_items,
+                     email_work, bms_position_id]
+    restricted_fields:
+      mobile: {role: HR_Manager, reason: PII}
+
+  worker_ranking:
+    domain: Workforce / HR
+    description: "Worker site & mobilisation ranking scores."
+    grain: bms_ranking_id
+    business_questions: ["Top-ranked workers for mobilisation?", "Ranking of <worker>?"]
+    allowed_fields: [bms_ranking_id, first_name, last_name, opms_employee_id]
+    restricted_fields:
+      site_score:    {role: HR_Manager, reason: HR-sensitive performance score}
+      mob_score:     {role: HR_Manager, reason: HR-sensitive}
+      mob_score_raw: {role: HR_Manager, reason: HR-sensitive}
+      mob_test:      {role: HR_Manager, reason: HR-sensitive}
+    security_rules: ["Ranking scores are HR-sensitive; without HR_Manager return only the name list, not scores."]
+
+  audit_activity:
+    domain: Audit
+    description: "Change/CDC events — who changed what for which employee, when (from 2025-01-08)."
+    grain: change_log_id
+    business_questions: ["Recent changes to <worker>'s record?", "What changed on <date>?"]
+    allowed_fields: [change_log_id, created_at, event_type, opms_employee_id, first_name, last_name]
+    restricted_fields:
+      value_before: {role: Admin_IT, reason: contextual PII}
+      value_after:  {role: Admin_IT, reason: contextual PII}
+    security_rules: ["History only goes back to 2025-01-08."]
+
+  file_index:
+    domain: Files
+    description: "Every file in the BMS + IMS + FDS SharePoint document libraries (name/path index, not contents). BMS: Commercial, Corporate, HSEQ Records, Controlled Documents etc. IMS: Operations (job folders), PublishedDocuments. FDS: Documents (distributed forms)."
+    grain: web_url
+    business_questions:
+      - "Find the <logo/form/template/document> file — where is it stored?"
+      - "What files are in <library/folder>? Latest version of <name>?"
+    allowed_fields: [site, library, file_name, ext, folder_path, size_kb, web_url, modified_at, modified_by]
+    restricted_fields: {}
+    security_rules: ["Index of names/paths only — never claims to know file CONTENTS.",
+                     "'Archived Staff Data' filenames may embed personal names; return matches but do not enumerate that library wholesale without HR_Manager role."]
+
+  fds_allocations:
+    domain: FDS (Form Distribution)
+    description: "FDS allocations (5 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list allocations?"]
+    allowed_fields: [Title, PID, PayrollDeduction, AssetCategory, AssetCategoryPID, ModelFilter, Active, id, Modified, Created, AuthorLookupId, EditorLookupId, Temp]
+    restricted_fields: {}
+  fds_apps_apps:
+    domain: FDS (Form Distribution)
+    description: "Registered form apps (5 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list apps_apps?"]
+    allowed_fields: [Title, _x0049_mg1, _x0049_mg2, AdminUsers, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_apps_checks:
+    domain: FDS (Form Distribution)
+    description: "Form app check/validation runs (587 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list apps_checks?"]
+    allowed_fields: [Title, Required, AppLookupId, ListNum, SubListNum, ListOrder, AppId, id, Modified, Created, AuthorLookupId, EditorLookupId, ListText, SectionText, LayoutSizes, Schema, Choices, Action, InfoText]
+    restricted_fields: {}
+  fds_assetgroup:
+    domain: FDS (Form Distribution)
+    description: "FDS asset groups (74 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list assetgroup?"]
+    allowed_fields: [Title, PID, id, Modified, Created, AuthorLookupId, EditorLookupId, Groupings]
+    restricted_fields: {}
+  fds_assets:
+    domain: FDS (Form Distribution)
+    description: "FDS asset register mirror (1038 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list assets?"]
+    allowed_fields: [Title, PID, Active, AssetID, Status, SerialNumber, Model, AssetGroup, AssetGroupPID, ResponsiblePerson, ResponsiblePersonPID, Location, LocationPID, AssetGroup_x003a__x0020_TagsPID, AssetGroup_x003a__x0020_Tags, id, Modified, Created, AuthorLookupId, EditorLookupId, Parent, ParentPID, Sibling, SiblingPID]
+    restricted_fields: {}
+  fds_clients:
+    domain: FDS (Form Distribution)
+    description: "FDS client list mirror (75 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list clients?"]
+    allowed_fields: [Title, PID, Active, ClientShortName, ATitle, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_dailysheets:
+    domain: FDS (Form Distribution)
+    description: "Daily sheet form submissions (schema + data payload per shift date) (18 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list dailysheets?"]
+    allowed_fields: [Title, Schema, Data, JobsPIDs, Closed, NumType, Description, AppId, id, Modified, Created, AuthorLookupId, EditorLookupId, ShiftDate, Images]
+    restricted_fields: {}
+  fds_formdistribute:
+    domain: FDS (Form Distribution)
+    description: "Form distribution rules — which app/form goes to which users/ops sections (27 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list formdistribute?"]
+    allowed_fields: [Title, AppId, SubListNum, PID, Access, IncludeUsers, ExcludeUsers, ExcludeUsersPID, OpsSections, id, Modified, Created, AuthorLookupId, EditorLookupId, AccessPID, IncludeUsersPID, OpsSectionsPID]
+    restricted_fields: {}
+  fds_jobs:
+    domain: FDS (Form Distribution)
+    description: "FDS job register mirror (JobID, project, client, work location, status) used by form apps (540 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list jobs?"]
+    allowed_fields: [Title, JobID, Project, PID, Active, JobStatus, ProjectPID, ClientShortName, ClientShortNamePID, WorkLocation, WorkLocationPID, OpsSection, OpsSectionPID, CurrentJob, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_location:
+    domain: FDS (Form Distribution)
+    description: "FDS location (legacy list) (2 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list location?"]
+    allowed_fields: [Title, Area, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_locations:
+    domain: FDS (Form Distribution)
+    description: "FDS locations (15 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list locations?"]
+    allowed_fields: [Title, PID, Active, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_acme_master:
+    domain: FDS (Form Distribution)
+    description: "Acme master reference list (584 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list acme_master?"]
+    allowed_fields: [Title, Code, HirePrice, Weight, Status, InStock, Color, id, Modified, Created, AuthorLookupId, EditorLookupId, SequenceNo]
+    restricted_fields: {}
+  fds_opssections:
+    domain: FDS (Form Distribution)
+    description: "FDS ops sections (14 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list opssections?"]
+    allowed_fields: [Title, PID, Active, Abbrev, AllowForJMS, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_positions:
+    domain: FDS (Form Distribution)
+    description: "FDS position list mirror (173 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list positions?"]
+    allowed_fields: [Title, AccessLevel, AccessLevelPID, PID, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_projects:
+    domain: FDS (Form Distribution)
+    description: "FDS project list mirror (86 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list projects?"]
+    allowed_fields: [Title, ProjectID, Client, ClientPID, PID, Active, Status, OpsSection, OpsSectionPID, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_src_request:
+    domain: FDS (Form Distribution)
+    description: "SRC (site resource) requests (17 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list src_request?"]
+    allowed_fields: [Title, Date, ScaffoldRequestByLookupId, AcmeSupervisorLookupId, WorkOrderNo, EstWeight_x0028_kg_x0029_, WeightPicked, LocationLookupId, SignOffAction, id, Modified, Created, AuthorLookupId, EditorLookupId, BarcodeNo]
+    restricted_fields: {}
+  fds_src_request_line_item:
+    domain: FDS (Form Distribution)
+    description: "SRC request line items (4278 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list src_request_line_item?"]
+    allowed_fields: [Picked, SRCRequestLookupId, CodeLookupId, Code_x003a__x0020_CodeLookupId, Code_x003a_WeightLookupId, Code_x003a_In_x0020_StockLookupId, Modified, Code_x003a_SequenceNoLookupId, id, Created, AuthorLookupId, EditorLookupId, Qty, InUse]
+    restricted_fields: {}
+  fds_src_transactions:
+    domain: FDS (Form Distribution)
+    description: "SRC transactions (6 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list src_transactions?"]
+    allowed_fields: [Title, TransactionData, TransactionDate, Status, TransactionType, SourceSRCLookupId, id, Modified, Created, AuthorLookupId, EditorLookupId, ApprovedBy, ReviewedBy, Comments, ApprovedBySignature, ReviewedBySignature]
+    restricted_fields: {}
+  fds_storeitems:
+    domain: FDS (Form Distribution)
+    description: "FDS store items (394 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list storeitems?"]
+    allowed_fields: [Title, PID, Code, Category, CategoryPID, Active, PPEtype, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_storelocations:
+    domain: FDS (Form Distribution)
+    description: "FDS store locations (12 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list storelocations?"]
+    allowed_fields: [Title, PID, Active, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+  fds_workers:
+    domain: FDS (Form Distribution)
+    description: "FDS worker roster mirror (name, position, sites, active flag) used by form apps (530 rows; SharePoint FDS site list)."
+    grain: id
+    business_questions: ["What is in the FDS list workers?"]
+    allowed_fields: [Title, PID, Active, OfficeUserLookupId, Position, PositionPID, Sites, SitesPID, RosteredPosition, id, Modified, Created, AuthorLookupId, EditorLookupId]
+    restricted_fields: {}
+# =====================================================================
+# BUSINESS TERM -> domain/table mapping (helps domain classification)
+# =====================================================================
+business_terms:
+  "ticket | cert | certificate | competency | qualification | expired | expiring | compliant | can work | eligible to deploy": training_compliance
+  "licence | license": licence_register
+  "rostered | roster | scheduled | swing | shift on date": roster_summary
+  "timesheet for a week/date range | actual hours | gap hours | 上周timesheet": weekly_timesheet
+  "hours | timesheet | worked hours (monthly aggregate)": timesheet_summary
+  "who is | profile | contact | role | position of person | supplier of person": employee_profile
+  "who works at | assigned to site | site crew | team": site_assignment
+  "project | client jobs | how many jobs": project_job_summary
+  "job <code> | job detail | job lead | work location": job_detail
+  "asset | plant | equipment | generator | vehicle": asset_register
+  "hardware | device | IT stock": hardware_register
+  "stock | inventory | store | on hand": inventory_summary
+  "PPE | workwear | sign out | signed out | issued to | 领用 | monthly usage of items": ppe_transactions
+  "safety | incident | hazard | corrective action | overdue action | HSEQ": hseq_register
+  "supplier | labour hire company | how many workers supplied": supplier_summary
+  "purchase | spend | invoice | PO total": purchase_summary
+  "rate | charge rate | day rate | night rate": rate_card
+  "ranking | mobilisation score | top workers": worker_ranking
+  "change history | who edited | audit | what changed": audit_activity
+  "file | logo | document | template | form | where is the file | find the file | 文件 | 在哪": file_index
+  "daily sheet | 日报表": fds_dailysheets
+  "form distribution | distributed forms | form app": fds_formdistribute

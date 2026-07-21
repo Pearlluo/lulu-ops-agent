@@ -1,0 +1,10 @@
+# entity_aliases.yaml — hand-maintained abbreviations -> canonical Gold entity names.
+# Used by entity_resolver.py (step 2, after exact-normalised match, before fuzzy).
+aliases:
+  AG: Acme Group
+  acme: Acme Group
+  WL: Westlake
+  T&H: Transport & Hire
+  TH: Transport & Hire
+  LH: Labour Hire
+  fab: Fabrication

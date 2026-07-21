@@ -1,0 +1,8 @@
+# Lulu Ops Center users — managed via the in-app admin panel (auth.py).
+# Copy to users.yaml. pw = sha256(salt + password). Never commit users.yaml.
+admin@company.com.au:
+  active: true
+  name: Admin
+  pw: <sha256-of-salt+password>
+  role: Admin_IT
+  salt: <random-hex>

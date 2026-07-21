@@ -1,0 +1,185 @@
+# business_definitions.yaml — Lulu Agent semantic layer.
+# Natural language is inconsistent; this maps fuzzy business phrases (EN + 中文) to a canonical
+# {domain, gold_table, fields, predicate}. The agent MUST resolve phrases here BEFORE generating SQL.
+# Every predicate uses REAL Gold columns (see agent_registry.yaml). Combine with role checks at validation.
+version: 1
+usage: |
+  Pipeline order:  question -> classify domain -> resolve phrases via THIS file -> pick Gold table
+  (agent_registry) -> build SQL from the canonical predicates -> validate (sql_validator) -> execute.
+  If a phrase isn't defined here, fall back to ILIKE matching on the relevant allowed text field,
+  and state the assumption.
+
+# -------------------------------------------------------------------
+# ENTITIES — what the nouns refer to (routes to a domain/table + key)
+# -------------------------------------------------------------------
+entities:
+  worker:    {phrases: [worker, employee, staff, person, labour, crew, 员工, 工人, 人员], domain: People, table: employee_profile, key: opms_employee_id}
+  cert:      {phrases: [cert, certificate, ticket, competency, qualification, 证, 证书, 资质, 票], domain: Compliance, table: training_compliance, key: competency_name}
+  licence:   {phrases: [licence, license, 执照, 牌照], domain: Compliance, table: licence_register, key: licence}
+  project:   {phrases: [project, 项目], domain: Project, table: project_job_summary, key: bms_project_id}
+  job:       {phrases: [job, work order, 工单, 作业], domain: Project, table: job_detail, key: bms_job_id}
+  client:    {phrases: [client, customer, 客户], domain: Project, table: project_job_summary, key: client_name}
+  site:      {phrases: [site, mine, location, 站点, 现场, 矿], domain: Workforce, table: site_assignment, key: site_name}
+  supplier:  {phrases: [supplier, labour hire company, vendor, 供应商], domain: Supplier, table: supplier_summary, key: supplier_name}
+  asset:     {phrases: [asset, plant, equipment, machine, generator, vehicle, 资产, 设备], domain: Asset, table: asset_register, key: asset_id}
+  hardware:  {phrases: [hardware, device, IT gear, 硬件, 设备], domain: Asset, table: hardware_register, key: code}
+  stock:     {phrases: [stock, inventory, store item, consumable, 库存, 物料], domain: Inventory, table: inventory_summary, key: item_name}
+  incident:  {phrases: [incident, hazard, safety issue, action, 安全, 隐患, 事件], domain: HSEQ, table: hseq_register, key: bms_issue_id}
+
+# -------------------------------------------------------------------
+# STATUS / CONDITION TERMS — the core fuzzy -> predicate mappings
+# -------------------------------------------------------------------
+status_terms:
+
+  expired:
+    phrases: [expired, overdue cert, out of date, lapsed, no longer valid, 过期, 过期了, 失效, 已过期]
+    domain: Compliance
+    table: training_compliance
+    fields: [is_expired]
+    predicate: "is_expired = true"
+
+  expiring_soon:
+    phrases: [expiring soon, about to expire, due to expire, renew soon, 快到期, 即将到期, 临期]
+    domain: Compliance
+    table: training_compliance
+    fields: [is_expired, days_to_expiry]
+    predicate: "is_expired = false AND days_to_expiry BETWEEN 0 AND 30"
+    note: "Default window = 30 days (per business). The precomputed `is_expiring_soon` flag uses 90 days;
+           use days_to_expiry for any custom window (e.g. 14/60/90)."
+
+  compliant:
+    phrases: [compliant, valid, eligible, can work, ok to deploy, 合规, 有效, 可上岗, 能上岗]
+    domain: Compliance
+    table: training_compliance
+    fields: [is_expired]
+    predicate: "is_expired = false"
+    note: "No `is_compliant` column exists — compliance is DERIVED as (is_expired = false)."
+
+  not_eligible:
+    phrases: [cannot work, not eligible, can't be deployed, not compliant, blocked, 不能上岗, 不合规, 不能派工]
+    domain: Compliance
+    table: training_compliance
+    fields: [is_expired]
+    predicate: "is_expired = true"
+    note: "Derived: a worker is not eligible for a competency when its required cert is expired.
+           For an overall verdict, aggregate per worker (any expired required cert => not eligible)."
+
+  deployable_worker:
+    phrases: [deployable, available for work, ready to deploy, 可派, 可派工, 谁有空]
+    domain: Insight
+    table: employee_profile
+    fields: [is_active, position_name]
+    predicate: >-
+      is_active = true AND position is a FIELD trade (driver/operator/scaffolder/
+      boilermaker/trade assistant/rigger) AND no expired certs AND no roster >= today
+    note: "the admin's Plan B (2026-06-11): 可派工 = 现场工人 only. Finance/Admin/Planner/Management
+           and unrecorded positions are NOT deployable."
+
+  active_worker:
+    phrases: [active worker, current staff, employed, 在职, 活跃员工]
+    domain: People
+    table: employee_profile
+    fields: [is_active]
+    predicate: "is_active = true"
+
+  inactive_worker:
+    phrases: [inactive, terminated, ex-staff, left, 离职, 停用]
+    table: employee_profile
+    predicate: "is_active = false"
+
+  active_project:
+    phrases: [active project, ongoing project, live project, 活跃项目, 进行中项目, 在跑项目]
+    domain: Project
+    table: project_job_summary
+    fields: [is_active]
+    predicate: "is_active = true"
+    note: "Use boolean is_active (reliable). The free-text `status` column may also read 'Active' — secondary."
+
+  active_job:
+    phrases: [active job, open job, 活跃工单, 在执行作业]
+    table: job_detail
+    fields: [is_active]
+    predicate: "is_active = true"
+
+  overdue_action:
+    phrases: [overdue action, overdue safety action, late corrective action, 逾期整改, 超期]
+    domain: HSEQ
+    table: hseq_register
+    fields: [is_overdue]
+    predicate: "is_overdue = true"
+
+  open_issue:
+    phrases: [open issue, unresolved, outstanding action, 未关闭, 未完成, 待处理]
+    domain: HSEQ
+    table: hseq_register
+    fields: [is_open]
+    predicate: "is_open = true"
+
+  high_priority:
+    phrases: [high priority, urgent, critical, 高优先级, 紧急]
+    table: hseq_register
+    fields: [action_priority]
+    predicate: "action_priority ILIKE '%high%'"
+
+  in_stock:
+    phrases: [in stock, available, on hand, 有货, 有库存]
+    domain: Inventory
+    table: inventory_summary
+    fields: [stock]
+    predicate: "stock > 0"
+
+  out_of_stock:
+    phrases: [out of stock, none left, 缺货, 没库存]
+    table: inventory_summary
+    predicate: "stock <= 0 OR stock IS NULL"
+
+  hardware_available:
+    phrases: [hardware in stock, available device, 硬件有货]
+    domain: Asset
+    table: hardware_register
+    fields: [in_stock]
+    predicate: "in_stock > 0"
+
+  asset_in_service:
+    phrases: [in service, operational asset, working asset, 在用, 正常]
+    domain: Asset
+    table: asset_register
+    fields: [status, is_active]
+    predicate: "is_active = true AND status ILIKE '%service%'"
+
+  active_supplier:
+    phrases: [active supplier, current supplier, 活跃供应商, 在用供应商]
+    domain: Supplier
+    table: supplier_summary
+    fields: [is_active]
+    predicate: "is_active = true"
+
+# -------------------------------------------------------------------
+# METRIC TERMS — aggregation intent
+# -------------------------------------------------------------------
+metric_terms:
+  count:        {phrases: [how many, number of, count, 多少, 几个, 数量], sql: "COUNT(*)"}
+  total_hours:  {phrases: [worked hours, total hours, hours worked, man hours, 工时, 总工时, 工作小时], table: timesheet_summary, field: total_hours, sql: "SUM(total_hours)"}
+  total_spend:  {phrases: [spend, total cost, amount spent, 花费, 支出, 采购金额], table: purchase_summary, field: computed_total, sql: "SUM(computed_total)", role: Finance}
+  worker_count: {phrases: [how many workers, headcount, 工人数, 人数], table: supplier_summary, field: worker_count}
+  job_count:    {phrases: [how many jobs, number of jobs, 多少工单, 作业数], table: project_job_summary, field: job_count}
+
+# -------------------------------------------------------------------
+# TIME PHRASES — relative dates ("today" = pipeline run date)
+# -------------------------------------------------------------------
+time_terms:
+  today:        {phrases: [today, 今天], note: "use precomputed days_to_expiry for expiry; else CURRENT_DATE"}
+  next_30_days: {phrases: [next 30 days, within a month, 30天内, 一个月内], predicate_template: "days_to_expiry BETWEEN 0 AND 30"}
+  next_90_days: {phrases: [next 90 days, this quarter ahead, 90天内, 三个月内], predicate_template: "days_to_expiry BETWEEN 0 AND 90"}
+  this_month:   {phrases: [this month, 本月, 这个月], field: month, note: "timesheet_summary.month is 'YYYY-MM' — compare to run-month string"}
+  this_year:    {phrases: [this year, 今年, 本年], note: "filter date columns by year prefix"}
+
+# -------------------------------------------------------------------
+# RESOLUTION NOTES
+# -------------------------------------------------------------------
+resolution_notes:
+  - "Always map a phrase to its canonical predicate here before writing WHERE clauses."
+  - "Compliance verdicts use is_expired (no is_compliant column). 'expiring soon' = days_to_expiry 0..30 by default."
+  - "Names/entities: resolve via ILIKE '%term%' on the entity's key text field; if multiple match, ask."
+  - "Financial/HR predicates (total_spend, ranking scores) still require the role gate in sql_validator."
+  - "If a phrase is undefined here, do not guess a column — fall back to ILIKE on an allowed text field and state the assumption."

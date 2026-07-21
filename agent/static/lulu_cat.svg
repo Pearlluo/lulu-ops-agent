@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 140">
+  <!-- Lulu — baby-schema edition: round chubby head, SHORT soft ears, big LOW-set eyes
+       with sparkles, no mouth. (尖嘴猴腮 fixed per kawaii design principles) -->
+  <path d="M24 84
+           C24 56 32 42 44 33
+           L46 8
+           C56 14 62 20 67 26
+           C75 23 85 23 93 26
+           C98 20 104 14 114 8
+           L116 33
+           C128 42 136 56 136 84
+           C136 113 110 133 80 133
+           C50 133 24 113 24 84 Z"
+        fill="#16100e" stroke="#16100e" stroke-width="5" stroke-linejoin="round"/>
+  <!-- green inner, right ear -->
+  <path d="M112 28 L113 13 C107 17 102 21 98 25 Z" fill="#86d4ae"
+        stroke="#86d4ae" stroke-width="3" stroke-linejoin="round"/>
+  <!-- big eyes, set LOW on the face (baby schema) -->
+  <ellipse cx="55" cy="86" rx="21" ry="26" fill="#f6f0da"/>
+  <ellipse cx="105" cy="86" rx="21" ry="26" fill="#f6f0da"/>
+  <!-- big soft pupils -->
+  <ellipse cx="59" cy="89" rx="13" ry="17" fill="#070605"/>
+  <ellipse cx="101" cy="89" rx="13" ry="17" fill="#070605"/>
+  <!-- sparkles (the kawaii catchlight) -->
+  <circle cx="55" cy="82" r="4" fill="#ffffff"/>
+  <circle cx="97" cy="82" r="4" fill="#ffffff"/>
+  <circle cx="63" cy="96" r="1.8" fill="#ffffff" opacity=".8"/>
+  <circle cx="105" cy="96" r="1.8" fill="#ffffff" opacity=".8"/>
+</svg>

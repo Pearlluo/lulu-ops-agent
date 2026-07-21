@@ -1,0 +1,15 @@
+streamlit==1.58.0
+duckdb==1.5.3
+sqlglot==30.10.0
+openai==2.36.0
+anthropic==0.109.1
+requests==2.31.0
+PyYAML==6.0.3
+python-dotenv==1.0.1
+pandas==3.0.2
+pyarrow==24.0.0
+plotly==6.8.0
+rapidfuzz==3.14.5
+PyMuPDF==1.27.2.3
+openpyxl==3.1.5
+azure-storage-blob==12.28.0

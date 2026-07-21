@@ -1,0 +1,218 @@
+# example_question_mapping.yaml — few-shot routing examples for the Lulu Agent.
+# Pattern per example: question -> domain -> gold_table -> validated SQL -> expected answer format.
+# SQL is DuckDB over gold/<table>.parquet (use the az:// URI in production). All SELECT-only,
+# allowed_fields only, LIMIT on listings, ILIKE for names.
+version: 1
+examples:
+
+  # ---- People ----
+  - question: "Who is James Smith — what's his position and supplier?"
+    domain: People
+    gold_table: employee_profile
+    sql: |
+      SELECT opms_employee_id, first_name, last_name, position_name, company_name,
+             supplier_name, ops_section_name, is_active
+      FROM read_parquet('gold/employee_profile.parquet')
+      WHERE lower(first_name) ILIKE '%james%' AND lower(last_name) ILIKE '%smith%'
+      LIMIT 100;
+    answer_format: "Name + position + supplier + status as a short profile line. If >1 match, list candidates and ask which."
+
+  - question: "List active electricians."
+    domain: People
+    gold_table: employee_profile
+    sql: |
+      SELECT opms_employee_id, first_name, last_name, position_name, ops_section_name
+      FROM read_parquet('gold/employee_profile.parquet')
+      WHERE is_active = true AND position_name ILIKE '%electric%'
+      LIMIT 100;
+    answer_format: "Count first, then a compact table. Note position only covers BMS-linked workers."
+
+  # ---- Compliance / training ----
+  - question: "Whose tickets expire in the next 30 days?"
+    domain: People / Compliance
+    gold_table: training_compliance
+    sql: |
+      SELECT first_name, last_name, competency_name, expiry_date, days_to_expiry
+      FROM read_parquet('gold/training_compliance.parquet')
+      WHERE is_expired = false AND days_to_expiry BETWEEN 0 AND 30
+      ORDER BY days_to_expiry
+      LIMIT 100;
+    answer_format: "Count of workers/certs expiring, then table sorted by days_to_expiry ascending."
+
+  - question: "Is worker 1042 compliant for Working at Heights?"
+    domain: People / Compliance
+    gold_table: training_compliance
+    sql: |
+      SELECT competency_name, status, expiry_date, is_expired, is_expiring_soon, days_to_expiry
+      FROM read_parquet('gold/training_compliance.parquet')
+      WHERE opms_employee_id = 1042 AND competency_name ILIKE '%working at heights%'
+      LIMIT 100;
+    answer_format: "Clear COMPLIANT / NOT COMPLIANT verdict + reason (expired? days left?). 0 rows = no such cert on record."
+
+  - question: "Which licences does worker 1042 hold?"
+    domain: Compliance
+    gold_table: licence_register
+    sql: |
+      SELECT licence, licence_items
+      FROM read_parquet('gold/licence_register.parquet')
+      WHERE opms_employee_id = 1042
+      LIMIT 100;
+    answer_format: "List of licences held. (mobile is restricted — HR_Manager only.)"
+
+  # ---- Roster / Time ----
+  - question: "Who is rostered on the Newman Expansion project?"
+    domain: Roster
+    gold_table: roster_summary
+    sql: |
+      SELECT DISTINCT opms_employee_id, first_name, last_name, position_name, roster_date
+      FROM read_parquet('gold/roster_summary.parquet')
+      WHERE project_name ILIKE '%newman expansion%'
+      ORDER BY roster_date
+      LIMIT 100;
+    answer_format: "Distinct workers + their rostered dates/positions. Mention source (opms/bms) if asked."
+
+  - question: "How many hours did worker 1042 work in 2026-05?"
+    domain: Time
+    gold_table: timesheet_summary
+    sql: |
+      SELECT site_name, total_hours, entry_count
+      FROM read_parquet('gold/timesheet_summary.parquet')
+      WHERE opms_employee_id = 1042 AND month = '2026-05'
+      LIMIT 100;
+    answer_format: "Total hours for the month (sum across sites), broken down by site."
+
+  # ---- Project ----
+  - question: "How many jobs does Ironclad have, how many active?"
+    domain: Project
+    gold_table: project_job_summary
+    sql: |
+      SELECT project_name, client_name, job_count, active_job_count
+      FROM read_parquet('gold/project_job_summary.parquet')
+      WHERE client_name ILIKE '%ironclad%'
+      LIMIT 100;
+    answer_format: "Per-project job_count and active_job_count for the client; sum if they want a total."
+
+  - question: "Tell me about job JOB-2024-0105."
+    domain: Project
+    gold_table: job_detail
+    sql: |
+      SELECT job_title, job_code, job_status, project_name, client_name,
+             work_location_name, lead_first_name, lead_last_name
+      FROM read_parquet('gold/job_detail.parquet')
+      WHERE job_code ILIKE '%JOB-2024-0105%'
+      LIMIT 100;
+    answer_format: "One job summary: title, project, client, location, lead, status."
+
+  # ---- Asset / Inventory ----
+  - question: "What's the status and location of asset AMS-GEN-003?"
+    domain: Asset
+    gold_table: asset_register
+    sql: |
+      SELECT asset_name, asset_id, status, model, manufacturer_name, location_name, asset_group_name
+      FROM read_parquet('gold/asset_register.parquet')
+      WHERE asset_id ILIKE '%AMS-GEN-003%' OR asset_name ILIKE '%AMS-GEN-003%'
+      LIMIT 100;
+    answer_format: "Asset status + location + model/manufacturer line."
+
+  - question: "Is hardware item BC-1234 in stock?"
+    domain: Asset / IT
+    gold_table: hardware_register
+    sql: |
+      SELECT hardware_name, code, status, in_stock, category_name
+      FROM read_parquet('gold/hardware_register.parquet')
+      WHERE code ILIKE '%BC-1234%' OR hardware_name ILIKE '%BC-1234%'
+      LIMIT 100;
+    answer_format: "In-stock count + status. (hire_price is Finance-restricted.)"
+
+  - question: "How much stock of safety boots do we have?"
+    domain: Inventory
+    gold_table: inventory_summary
+    sql: |
+      SELECT item_name, stock, location_name, category_name
+      FROM read_parquet('gold/inventory_summary.parquet')
+      WHERE item_name ILIKE '%boot%'
+      LIMIT 100;
+    answer_format: "Stock per item/location; sum if a single total is asked."
+
+  # ---- HSEQ ----
+  - question: "What safety actions are overdue?"
+    domain: HSEQ
+    gold_table: hseq_register
+    sql: |
+      SELECT issue_title, issue_type, action_priority, action_due_date
+      FROM read_parquet('gold/hseq_register.parquet')
+      WHERE is_overdue = true
+      ORDER BY action_due_date
+      LIMIT 100;
+    answer_format: "Count of overdue actions + table by due date. (IssueDetail/ActionPlan are HR-restricted.)"
+
+  # ---- Supplier / Finance / Commercial ----
+  - question: "Which suppliers supply the most workers?"
+    domain: Supplier
+    gold_table: supplier_summary
+    sql: |
+      SELECT supplier_name, worker_count, is_active
+      FROM read_parquet('gold/supplier_summary.parquet')
+      WHERE is_active = true
+      ORDER BY worker_count DESC
+      LIMIT 100;
+    answer_format: "Suppliers ranked by worker_count. (ABN is Finance-restricted.)"
+
+  - question: "What did we spend with ACME last quarter?"
+    domain: Finance
+    gold_table: purchase_summary
+    role_required: Finance
+    sql: |
+      -- requires Finance role to return inv_amount/computed_total
+      SELECT supplier_name, invoice_date, line_count, computed_total
+      FROM read_parquet('gold/purchase_summary.parquet')
+      WHERE supplier_name ILIKE '%acme%'
+      LIMIT 100;
+    answer_format: "If caller lacks Finance: return supplier + count + dates only and say amounts need Finance role. Else SUM(computed_total)."
+
+  - question: "What's the day rate for a Boilermaker on the Ironstone project?"
+    domain: Commercial
+    gold_table: rate_card
+    role_required: Finance
+    sql: |
+      -- day_shift_rate requires Finance role
+      SELECT rate_title, project_name, day_shift_rate, night_shift_rate
+      FROM read_parquet('gold/rate_card.parquet')
+      WHERE project_name ILIKE '%ironstone%' AND rate_title ILIKE '%boiler%'
+      LIMIT 100;
+    answer_format: "Rate value if Finance role; otherwise refuse and state Finance role required."
+
+  # ---- Workforce ----
+  - question: "Who works at Newman Mine?"
+    domain: Workforce
+    gold_table: site_assignment
+    sql: |
+      SELECT DISTINCT first_name, last_name, position_name, team_name
+      FROM read_parquet('gold/site_assignment.parquet')
+      WHERE site_name ILIKE '%newman%'
+      LIMIT 100;
+    answer_format: "Count + table of workers (name, position, team) at the site."
+
+  - question: "Top 10 workers by mobilisation ranking."
+    domain: Workforce / HR
+    gold_table: worker_ranking
+    role_required: HR_Manager
+    sql: |
+      -- scores require HR_Manager role
+      SELECT first_name, last_name, mob_score
+      FROM read_parquet('gold/worker_ranking.parquet')
+      ORDER BY mob_score DESC
+      LIMIT 10;
+    answer_format: "If HR_Manager: ranked list with scores. Else: refuse scores, may list names only."
+
+  # ---- Audit ----
+  - question: "What changed on worker 1042's record recently?"
+    domain: Audit
+    gold_table: audit_activity
+    sql: |
+      SELECT created_at, event_type
+      FROM read_parquet('gold/audit_activity.parquet')
+      WHERE opms_employee_id = 1042
+      ORDER BY created_at DESC
+      LIMIT 100;
+    answer_format: "Timeline of change events (date + event_type). value_before/after need Admin_IT role. History from 2025-01-08."
