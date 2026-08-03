@@ -2,7 +2,7 @@
 
 A production AI operations platform for a labour-hire / mining-services business. A nightly pipeline reloads the company's rostering system and SharePoint lists into a bronze → silver → gold Parquet lake on Azure Blob; on top of that lake sits an agent that answers operational questions ("who can be deployed to site X?", "which rostered workers hold expired certs?", "how many hours has job Y burned against its quote?") through a **hard SQL security chain — the LLM never writes free-form SQL**.
 
-**v3** turns the single-app agent into a governed platform: a **remote MCP gateway** exposes ~61 registered business functions to any MCP client (Claude Desktop / claude.ai connectors) behind Entra ID OAuth, a **three-layer security chain** filters what each caller can see, and the first **governed write and action tools** ship with dry-run, explicit confirmation, server-side identity injection and full audit. A **Microsoft Fabric lakehouse runs in parallel** with daily parity gates against the Azure Blob lake, with CI keeping both code paths in lock-step.
+**v3** turns the single-app agent into something more useful: **a security gateway that lets Claude (or any MCP client) safely operate over internal company systems**. Staff connect their everyday Claude to the gateway as a connector; LuLu authenticates them with Entra ID, decides which of ~61 registered business functions their role may even see, validates every query, redacts every response, and audits every call. The first **governed write and action tools** ship with dry-run, explicit confirmation, server-side identity injection and full audit. A **Microsoft Fabric lakehouse runs in parallel** with daily parity gates against the Azure Blob lake, with CI keeping both code paths in lock-step.
 
 > **Note:** This is a desensitised public copy. Company, client, supplier and worker names are illustrative placeholders; tenant/app/workspace GUIDs are zeroed; the data lake, logs, memory files, knowledge index and credentials are not included — so this copy is intentionally **not runnable as-is**. It shows the architecture and code, not live data.
 
@@ -90,6 +90,25 @@ flowchart TD
 - **Microsoft Fabric parallel platform** — the same pipeline code runs nightly in a Fabric Lakehouse notebook; a parity gate compares every gold table row-for-row against the Blob lake daily. CI syncs pipeline code to the Lakehouse on every deploy so the two engines can never drift.
 - **CI/CD** — GitHub Actions: every push runs the full pytest suite (120+ tests), then builds/deploys the app image, the gateway and the pipeline job image, pinned to exact builds.
 - **RAG knowledge tool + capability registry** — company automations, flows and business rules are indexed for retrieval; authoritative business computations (like multi-status project hours) live in one registered implementation that every consumer must call.
+
+## Claude as the front-end, LuLu as the security gateway
+
+The pattern that makes this architecture pay for itself:
+
+- **Bring-your-own-Claude** — staff connect the gateway to the Claude they already use (Desktop or claude.ai custom connector, OAuth discovery handles sign-in). There is no separate chat UI to build, host or teach.
+- **Near-zero marginal LLM cost** — the reasoning runs on the company's existing Claude subscription seats, which were already paid for. The platform itself never bills LLM tokens for those conversations: the gateway serves *governed data*, not model calls. (The standalone Streamlit app keeps its own model gateway for users without a seat.)
+- **Token-frugal by construction** — every tool returns a pre-aggregated summary plus capped, role-filtered rows (forced `LIMIT`, no `SELECT *`, restricted fields stripped before they reach the model). Claude never pages through raw tables, so context stays small and answers stay fast.
+- **Extensible to any internal tool** — new capabilities are registered, not coded ad-hoc: a YAML entry declares the tool's roles, risk level, confirmation rules and source of truth, and the same identity → policy → validation → redaction → audit chain wraps it automatically. Level-2 actions (e.g. "refresh the data lake now") run through a whitelist registry using the platform's managed identity — the model never holds a credential.
+- **The LLM is untrusted by design** — swap Claude for any MCP-capable model and the guarantees don't change, because none of them live in the model: identity comes from the token, permissions from policy, data from validated SQL, and everything is audited server-side.
+
+## Governed learning loop
+
+The agent gets better from real usage, without anyone retraining a model:
+
+- **Memory agent** — business rules stated in chat ("workers going to site X need certification Y") are captured, persisted, recalled on relevant questions and cross-checked against the lake
+- **Trace → bug inbox → regression** — every Q&A lands in a trace log; failures are auto-classified into a bug inbox; one command promotes a bad conversation into a permanent regression case that CI runs forever after
+- **RAG knowledge index** — company automations, flows and business definitions are indexed for retrieval; when a rule changes, rebuilding the index updates every future answer
+- **Data-quality sentinel + parity gate** — post-pipeline checks on row counts, null rates and KPI swings, plus the daily Fabric-vs-Blob comparison, catch silent data drift before users do
 
 ## The security chain (the part I'm most proud of)
 
