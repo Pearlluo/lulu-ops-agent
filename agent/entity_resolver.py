@@ -237,6 +237,6 @@ def resolve_in_question(question):
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    for t in ["Acmegroup", "acme group", "MG", "Acme Grup", "Carter", "westlake", "NWM", "Transport and Hire"]:
+    for t in ["Acmegroup", "acme group", "MG", "Acme Grup", "Carter", "westlink", "FMG", "Transport and Hire"]:
         r = resolve(t)
         print(f"{t!r:22} -> {r['status']:10}", r["match"] or r["candidates"][:3])

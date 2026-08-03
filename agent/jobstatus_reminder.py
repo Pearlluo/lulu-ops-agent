@@ -104,7 +104,7 @@ def main():
     s = requests.Session()
     at = token()
     headers = {"Authorization": "Bearer " + at, "Content-Type": "application/json"}
-    sender = os.getenv("GRAPH_SENDER", "test@company.com.au")
+    sender = os.getenv("GRAPH_SENDER", "test@yourtenant.example")
     seen = recently_nudged()
     missing = find_missing(s, headers)
     print(f"missing status: {len(missing)} item(s)")

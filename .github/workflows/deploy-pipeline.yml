@@ -1,0 +1,56 @@
+name: Deploy lulu-pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/Raw Data/API/**"
+      - ".github/workflows/deploy-pipeline.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: deploy-pipeline
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: yourregistry.azurecr.io/lulu-pipeline:gh-${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image in ACR
+        run: az acr build -r yourregistry -t "$IMAGE" -t yourregistry.azurecr.io/lulu-pipeline:latest "data/Raw Data/API"
+
+      # Pin the nightly job to the exact build instead of a floating :latest.
+      - name: Point lulu-refresh at the new image
+        run: az containerapp job update -n lulu-refresh -g lulu-rg --image "$IMAGE"
+
+      # The Fabric nightly notebook runs a copy of this code from the Prod
+      # Lakehouse (Files/code/api). Keep it in lock-step with every deploy —
+      # a stale copy broke weekly_timesheet parity for 3 days (2026-08-03).
+      - name: Sync pipeline code to Fabric Lakehouse
+        run: |
+          pip install requests
+          python "data/Raw Data/API/sync_fabric_code.py"

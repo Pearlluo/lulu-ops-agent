@@ -12,6 +12,12 @@ from .insight_tool import InsightTool
 from .automation_tool import AutomationTool
 from .file_tool import FileTool
 from .fds_tool import FdsTool
+from .knowledge_tool import KnowledgeTool
+from .capability_tool import CapabilityTool
+from .opms_write_tool import OpmsWriteTool
+from .opms_live_tool import OpmsLiveTool
+from .trigger_tool import TriggerTool
+from .quote_tool import QuoteTool
 
 
 def build_tools():
@@ -28,4 +34,10 @@ def build_tools():
         "automation": AutomationTool(),
         "files": FileTool(),
         "fds": FdsTool(),
+        "knowledge": KnowledgeTool(),
+        "capability": CapabilityTool(),
+        "opms_write": OpmsWriteTool(),
+        "opms_live": OpmsLiveTool(),
+        "trigger": TriggerTool(),
+        "quote": QuoteTool(),
     }

@@ -1,0 +1,6 @@
+credential/
+*.env
+*.log
+*.md
+__pycache__/
+.acr_name

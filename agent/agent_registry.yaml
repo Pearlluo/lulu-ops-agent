@@ -233,7 +233,7 @@ tables:
 
   invoice_register:
     domain: Finance
-    description: "Xero invoices (from OpsDB mirror): ACCREC = revenue we bill clients,
+    description: "Xero invoices (from CompanyDB mirror): ACCREC = revenue we bill clients,
       ACCPAY = supplier bills. job_code mined from the invoice Reference links revenue to
       projects (project_bridge). NOTE: Xero sync currently ends ~2026-04."
     grain: invoice_id

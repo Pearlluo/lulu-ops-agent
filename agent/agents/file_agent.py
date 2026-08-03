@@ -26,5 +26,5 @@ class FileAgent(BaseAgent):
 
     def handle(self, request: str, role: str = "default") -> dict:
         return {"agent": self.name, "ok": True,
-                "summary": "File Agent: 拖入 PDF/Excel/图片可解析；IMS 文件夹遍历待 Admin 批准后开建",
+                "summary": "File Agent: 拖入 PDF/Excel/图片可解析；IMS 文件夹遍历待 the admin 批准后开建",
                 "data": None}

@@ -20,6 +20,10 @@ COPY data/gold  /app/data/gold
 WORKDIR /app/data/agent
 
 EXPOSE 8501
+# Container Apps uses its own probes, but this keeps the image self-describing
+# and gives `docker run` local health for free.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8501/_stcore/health', timeout=4)"
 CMD ["streamlit", "run", "lulu_ops_center.py", \
      "--server.port=8501", "--server.address=0.0.0.0", \
      "--server.headless=true", "--server.enableCORS=false", \

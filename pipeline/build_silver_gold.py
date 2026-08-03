@@ -352,6 +352,19 @@ def build_training_compliance(fact_training, dim_person, dim_competency):
 def build_timesheet_summary(fact_timesheet, dim_person, dim_site):
     df = fact_timesheet.copy()
     df["hours"] = pd.to_numeric(df["hours"], errors="coerce")
+    # duplicate-sheet guard (21 Jul 2026: SUP-2967 + SUP-2969 same people, same
+    # date/site): per (employee, date, site) keep only the entries of the
+    # most-recently-modified sheet, otherwise the month rollup sums both sheets
+    df["_k"] = (df["opms_employee_id"].astype("string").fillna("") + "|"
+                + df["timesheet_date"].astype("string").fillna("") + "|"
+                + df["site_id"].astype("string").fillna(""))
+    df["_mod"] = df["modified_at"].astype("string").fillna("")
+    df["_tid"] = df["timesheet_id"].astype("string").fillna("")   # NaN would drop rows in merge
+    win = (df[["_k", "_tid", "_mod"]].drop_duplicates()
+             .sort_values("_mod")
+             .drop_duplicates("_k", keep="last"))
+    df = df.merge(win[["_k", "_tid"]], on=["_k", "_tid"], how="inner")
+    df = df.drop(columns=["_k", "_mod", "_tid"])
     df["month"] = pd.to_datetime(df["timesheet_date"], errors="coerce").dt.to_period("M").astype("string")
     grp = (df.groupby(["opms_employee_id", "site_id", "month"], dropna=False)
              .agg(total_hours=("hours", "sum"), entry_count=("hours", "size")).reset_index())
@@ -682,7 +695,7 @@ def build_roster_summary():
 
 
 # --- domain: Project / OPMS<->BMS bridge ---
-# Port of the GitHub repo `AdminLuo-working-UpdateTimesheet-Projects-Rates-` (Sharepoint_contracts.py):
+# Port of the GitHub repo `yourorg-timesheet-rates` (Sharepoint_contracts.py):
 # an OPMS project string carries a job-code prefix ("SH-25006 - July FPS" -> "SH-25006") which keys
 # into BMS: JMS-Jobs.JobID -> ProjectLookupId -> JMS-Projects (ATitle = client code "C0002-Newmont").
 # Rows the prefix can't resolve fall back to the hand-maintained Project_Client_Map.csv
@@ -843,13 +856,22 @@ def _build_gap_map(ts_items):
 
 
 def _build_opms_hours_map():
-    """{(opms, date): hours} — OPMS timesheet entry values summed per worker per day."""
-    hours = {}
+    """{(opms, date): hours} — OPMS timesheet entry values per worker per day.
+
+    OPMS can hold DUPLICATE sheets for the same date/site (21 Jul 2026:
+    SUP-2967 + SUP-2969, same 42 people — summing across them doubles
+    everyone's hours). Sum within each sheet, then per (worker, day, site)
+    keep only the most-recently-modified sheet; a worker on two sites the
+    same day (different sheets) still gets both summed."""
+    contrib = {}   # (opms, day, site) -> {sheet_id: [hours, last_modified]}
     for ts in read_opms("timesheet_entries"):
         d = _perth_dt(ts.get("date"))
         if d is None:
             continue
         day = d.date()
+        sid = str(ts.get("id") or "")
+        site = str(ts.get("site_id") or "")
+        modified = str(ts.get("last_modified_date") or "")
         for entry in (ts.get("entries") or []):
             opms = _norm_opms(g(entry, "employee", "id"))
             if not opms:
@@ -858,8 +880,40 @@ def _build_opms_hours_map():
                 v = float(entry.get("value") or 0)
             except (TypeError, ValueError):
                 v = 0.0
-            hours[(opms, day)] = hours.get((opms, day), 0.0) + v
+            cur = contrib.setdefault((opms, day, site), {}).setdefault(sid, [0.0, modified])
+            cur[0] += v
+    hours = {}
+    for (opms, day, _site), sheets in contrib.items():
+        best = max(sheets.values(), key=lambda hv: hv[1])
+        hours[(opms, day)] = hours.get((opms, day), 0.0) + best[0]
     return {k: round(v, 2) for k, v in hours.items()}
+
+
+def _build_opms_roster_lookup():
+    """{(opms, date): day-context} from the OPMS roster feed. The OPMS roster is
+    extracted directly each night, so it carries project/position for days whose
+    PPL-Rosters write-back row hasn't landed yet (that flow lags 1-2 days)."""
+    look = {}
+    for r in read_opms("roster"):
+        emp = r.get("employee", {})
+        opms = _norm_opms(emp.get("id"))
+        if not opms:
+            continue
+        for d in (r.get("rostered_days") or []):
+            dt = _perth_dt(d.get("date"))
+            if dt is None:
+                continue
+            project = None
+            for alloc in (d.get("resource_request_allocations") or []):
+                project = project or g(alloc, "resource_request", "project")
+            look.setdefault((opms, dt.date()), {
+                "first_name": emp.get("first_name"),
+                "last_name": emp.get("last_name"),
+                "position_name": g(d, "position", "name"),
+                "work_type_name": g(d, "work_type", "name"),
+                "project_name": project,
+            })
+    return look
 
 
 def build_weekly_timesheet():
@@ -881,6 +935,7 @@ def build_weekly_timesheet():
             people_supplier[opms] = sid
 
     rows = []
+    covered = set()
     for p in read_bms("ppl", "PPL-Rosters"):
         opms = _norm_opms(p.get("OPMS"))
         d = _perth_dt(p.get("Date_x0020_From"))
@@ -892,6 +947,7 @@ def build_weekly_timesheet():
         if position.upper().startswith("Z.") and site_name.strip().upper() == "TRANSPORT & HIRE":
             continue                                  # plant/asset line, not a person
         key = (opms, work_date)
+        covered.add(key)
         if key in opms_hours:                         # OPMS actuals replace roster hours (step 1)
             roster_hours, hours_source = opms_hours[key], "opms"
         else:
@@ -920,12 +976,53 @@ def build_weekly_timesheet():
             "actual_hours": round(max(0.0, roster_hours - gap_hours), 2),
             "hours_source": hours_source,
         })
+
+    # Backfill: OPMS holds entered hours for (worker, day) pairs that have NO
+    # PPL-Rosters row yet — the roster write-back flow lags 1-2 days, which made
+    # the freshest OPMS days vanish from the lake entirely (quote-vs-actual gap
+    # the admin hit on SH-26046, 2026-07-31). Context comes from the OPMS roster feed
+    # (project string keeps job-code matching working); the BMS site name is
+    # unknown until the write-back lands.
+    opms_roster = _build_opms_roster_lookup()
+    emp_names = {}
+    for e in read_opms("employee"):
+        eid = _norm_opms(e.get("id"))
+        if eid and eid not in emp_names:
+            emp_names[eid] = (e.get("first_name"), e.get("last_name"))
+    for key in sorted(k for k in opms_hours if k not in covered):
+        opms, work_date = key
+        ctx = opms_roster.get(key, {})
+        position = str(ctx.get("position_name") or "").strip()
+        if position.upper().startswith("Z."):
+            continue                                  # plant/asset line, not a person
+        first, last = emp_names.get(opms, (None, None))
+        hrs = opms_hours[key]
+        gap_hours = gap_map.get(key, 0.0)
+        work_type = str(ctx.get("work_type_name") or "").strip()
+        project = ctx.get("project_name")
+        bridge_hit = resolve(project) if project else None
+        rows.append({
+            "opms_employee_id": to_int(opms),
+            "first_name": ctx.get("first_name") or first,
+            "last_name": ctx.get("last_name") or last,
+            "position_name": position or None,
+            "project_name": project,
+            "client_name": (bridge_hit.get("client_code") or bridge_hit.get("client_name")) if bridge_hit else None,
+            "site_name": None,
+            "supplier_name": supplier_map.get(people_supplier.get(opms, "")) or None,
+            "work_date": work_date.isoformat(),
+            "shift_type": "NS" if work_type.upper() == "NIGHT SHIFT" else "DS",
+            "roster_hours": round(hrs, 2),
+            "gap_hours": round(gap_hours, 2),
+            "actual_hours": round(max(0.0, hrs - gap_hours), 2),
+            "hours_source": "opms_no_bms_roster",
+        })
     df = pd.DataFrame(rows)
     df.to_parquet(GOLD / "weekly_timesheet.parquet", index=False)
     return df
 
 
-# --- domain: Commercial / Xero revenue (from OpsDB Azure SQL mirror) ---
+# --- domain: Commercial / Xero revenue (from CompanyDB Azure SQL mirror) ---
 # ACCREC = sales invoices (revenue to Acme); ACCPAY = supplier bills.
 # Reference often carries the job code ("SH-26036 | 4500553525") -> project_bridge link.
 # NOTE: the Xero sync currently ends ~2026-04; the daily brief carries a staleness rule.

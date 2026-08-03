@@ -39,7 +39,7 @@ check("detail no-match degrades gracefully", r.ok and r.row_count == 0 and "Know
 
 r = auto.find_automation(keyword="rates")
 check("find_automation('rates') → rates updater", r.ok and
-      any(d["repo"] == "AdminLuo-working-UpdateTimesheet-Projects-Rates-" for d in r.data), r.summary)
+      any(d["repo"] == "yourorg-timesheet-rates" for d in r.data), r.summary)
 
 r = auto.find_automation(keyword="费率")
 check("find_automation('费率') Chinese keyword", r.ok and r.row_count >= 1, r.summary)

@@ -1,12 +1,19 @@
 """blob_gold.py — keep the cloud app's Gold lake fresh by pulling the nightly-built
-parquet from Azure Blob, instead of relying on what was baked into the image.
+parquet from the configured storage backend, instead of relying on what was baked
+into the image.
 
-The nightly `lulu-refresh` job already builds Gold and uploads it to blob
-`lulu-data/gold/` (build_silver_gold.py -> upload_layer(GOLD, "gold")). This module
-is the matching PULL side: the app downloads those parquet on startup / on a TTL.
+Since 2026-07-28 this is a FACADE over gold_repository.py (GoldRepository):
+the public API (pull_gold / pull_state / regenerate_local_state / last_pull_epoch)
+is unchanged — lulu_ops_center and friends never notice — but the storage backend
+is now swappable via env GOLD_BACKEND:
 
-Design:
-- No-op when BLOB_CONNECTION_STRING is absent (local dev) -> the baked/local gold is used.
+    GOLD_BACKEND=azure_blob   (default) blob lulu-data/gold/  — today's production
+    GOLD_BACKEND=onelake      Fabric OneLake <lakehouse>.Lakehouse/Files/gold/
+
+Rollback from a bad OneLake cutover = flip the env var back, restart. Nothing else.
+
+Design (unchanged):
+- No-op when the backend is unconfigured (local dev) -> the baked/local gold is used.
 - TTL-guarded via a marker file so a long-running replica only re-pulls periodically.
 - Fail-safe: any error leaves the existing on-disk gold untouched (returns None).
 - Atomic-ish writes (download to .tmp, then replace) so a half-download can't be read.
@@ -15,24 +22,12 @@ import os
 import time
 from pathlib import Path
 
-GOLD_DIR = Path(__file__).resolve().parents[1] / "gold"   # data/gold
-AGENT_DIR = Path(__file__).resolve().parent               # data/agent
-_CONTAINER = "lulu-data"
-_PREFIX = "gold/"
+from gold_repository import GOLD_DIR, AGENT_DIR, get_repository
+
 _MARKER = GOLD_DIR / ".blob_sync"                          # epoch of last successful pull
 _STATE_MARKER = GOLD_DIR / ".state_sync"                   # epoch of last state-file (link audit) pull
-# non-gold UI freshness/audit files the pipeline mirrors under blob state/ (see run_pipeline.upload_agent_state)
-_STATE_FILES = ("link_health.json",)
-_CONN_KEYS = ("BLOB_CONNECTION_STRING", "AZURE_STORAGE_CONNECTION_STRING",
-              "AZURE_BLOB_CONNECTION_STRING", "STORAGE_CONNECTION_STRING")
-
-
-def _conn_str():
-    for k in _CONN_KEYS:
-        v = os.getenv(k)
-        if v:
-            return v
-    return None
+_VERSION_MARKER = GOLD_DIR / ".blob_version"               # backend version of last successful sync
+_VERSION_CHECK = GOLD_DIR / ".blob_version_check"          # throttle marker for freshness polls
 
 
 def _in_cloud():
@@ -49,41 +44,74 @@ def last_pull_epoch():
         return None
 
 
+def _ttl_fresh(marker: Path, ttl_seconds):
+    try:
+        return marker.exists() and time.time() - marker.stat().st_mtime < ttl_seconds
+    except Exception:
+        return False
+
+
 def pull_gold(force=False, ttl_seconds=1800):
-    """Download gold/*.parquet from blob into GOLD_DIR.
+    """Mirror the backend's gold/*.parquet into GOLD_DIR.
 
     Returns the number of files downloaded (int > 0) when a real sync happened,
-    False when skipped by the TTL, and None when there's no connection string or
+    False when skipped by the TTL, and None when the backend is unconfigured or
     the pull failed (existing gold is left in place either way).
     """
-    cs = _conn_str()
-    if not cs or not _in_cloud():
+    if not _in_cloud():
         return None                                       # local dev: use whatever's on disk
-    if not force and _MARKER.exists():
+    if not force and _ttl_fresh(_MARKER, ttl_seconds):
+        return False                                      # synced recently — skip the network call
+    n = get_repository().sync_gold(GOLD_DIR)
+    if n is None:
+        return None                                       # unconfigured or network/auth error
+    try:
+        _MARKER.write_text(str(int(time.time())))
+        ver = get_repository().get_version()              # so pull_gold_if_newer() doesn't
+        if ver:                                           # immediately re-download at first poll
+            _VERSION_MARKER.write_text(str(ver))
+    except Exception:
+        pass
+    return n
+
+
+def pull_gold_if_newer(ttl_seconds=300):
+    """Hot-reload guard for long-running replicas — the MCP gateway calls this on
+    request so a manual lulu_refresh (or the nightly run) reaches queries WITHOUT
+    an app restart. At most once per TTL it asks the backend for its newest-gold
+    version; a full re-sync happens only when that version moved. Cost profile:
+    throttled = one stat(); polled = one blob listing; download only when gold
+    actually changed. Returns files synced (int), False when throttled or
+    unchanged, None off-cloud / backend error (existing gold untouched)."""
+    if not _in_cloud():
+        return None
+    if _ttl_fresh(_VERSION_CHECK, ttl_seconds):
+        return False
+    try:
+        _VERSION_CHECK.parent.mkdir(parents=True, exist_ok=True)
+        _VERSION_CHECK.write_text(str(int(time.time())))
+    except Exception:
+        pass
+    try:
+        ver = get_repository().get_version()
+    except Exception:
+        return None
+    if not ver:
+        return None
+    try:
+        last = _VERSION_MARKER.read_text().strip()
+    except Exception:
+        last = ""
+    if str(ver) == last:
+        return False
+    n = get_repository().sync_gold(GOLD_DIR)
+    if n:
         try:
-            if time.time() - _MARKER.stat().st_mtime < ttl_seconds:
-                return False                              # synced recently — skip the network call
+            _VERSION_MARKER.write_text(str(ver))
+            _MARKER.write_text(str(int(time.time())))
         except Exception:
             pass
-    try:
-        from azure.storage.blob import BlobServiceClient
-        cc = BlobServiceClient.from_connection_string(cs).get_container_client(_CONTAINER)
-        GOLD_DIR.mkdir(parents=True, exist_ok=True)
-        n = 0
-        for b in cc.list_blobs(name_starts_with=_PREFIX):
-            name = b.name.split("/", 1)[-1]               # strip the "gold/" prefix
-            if not name.endswith(".parquet"):
-                continue
-            dest = GOLD_DIR / name
-            tmp = dest.with_name(dest.name + ".tmp")
-            with open(tmp, "wb") as f:
-                f.write(cc.download_blob(b.name).readall())
-            tmp.replace(dest)                             # swap in only once fully written
-            n += 1
-        _MARKER.write_text(str(int(time.time())))
-        return n
-    except Exception:
-        return None                                       # network/auth error -> keep existing gold
+    return n
 
 
 def regenerate_local_state():
@@ -109,39 +137,20 @@ def regenerate_local_state():
 
 
 def pull_state(force=False, ttl_seconds=600):
-    """Download blob state/<file> (link_health.json, ...) into data/agent/. Cloud-only, fail-safe.
+    """Mirror backend state/<file> (link_health.json, ...) into data/agent/. Cloud-only, fail-safe.
     These are non-gold UI freshness files (e.g. the folder-link audit) the nightly job uploads.
     Has its own TTL so it can run on every page load INDEPENDENTLY of pull_gold() — gold only
     changes nightly, but the link audit must not stay stale all day because gold didn't move."""
-    cs = _conn_str()
-    if not cs or not _in_cloud():
+    if not _in_cloud():
         return None
-    if not force and _STATE_MARKER.exists():
-        try:
-            if time.time() - _STATE_MARKER.stat().st_mtime < ttl_seconds:
-                return False                               # pulled recently — skip the network call
-        except Exception:
-            pass
+    if not force and _ttl_fresh(_STATE_MARKER, ttl_seconds):
+        return False                                       # pulled recently — skip the network call
+    n = get_repository().sync_state(AGENT_DIR)
+    if n is None:
+        return None
     try:
-        from azure.storage.blob import BlobServiceClient
-        cc = BlobServiceClient.from_connection_string(cs).get_container_client(_CONTAINER)
-        n = 0
-        for fname in _STATE_FILES:
-            try:
-                data = cc.download_blob(f"state/{fname}").readall()
-            except Exception:
-                continue                                   # blob not present yet -> keep baked file
-            dest = AGENT_DIR / fname
-            tmp = dest.with_name(dest.name + ".tmp")
-            with open(tmp, "wb") as f:
-                f.write(data)
-            tmp.replace(dest)
-            n += 1
-        try:
-            _STATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-            _STATE_MARKER.write_text(str(int(time.time())))
-        except Exception:
-            pass                                           # marker is an optimisation only
-        return n
+        _STATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        _STATE_MARKER.write_text(str(int(time.time())))
     except Exception:
-        return None
+        pass                                               # marker is an optimisation only
+    return n

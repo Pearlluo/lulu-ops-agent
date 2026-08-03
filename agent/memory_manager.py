@@ -3,7 +3,7 @@ Lulu's three-tier memory — what separates a Memory Agent from a RAG agent.
 
     Tier 1  Data Memory          = Gold (already built; refreshed nightly)
     Tier 2  Business Memory      = memory/company_memory.yaml   (site rules, supplier flags,
-                                    definitions, dated facts — knowledge Admin TELLS Lulu)
+                                    definitions, dated facts — knowledge the admin TELLS Lulu)
     Tier 3  Conversation Memory  = memory/conversation_memory.yaml (per-user preferences,
                                     focus topics, recent questions)
 

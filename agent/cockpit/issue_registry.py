@@ -259,10 +259,10 @@ def _d_finance():
         out.append(_mk(id="iss-xero-stale", type="failed_sync", node="xero", agent="fin",
                        entity="invoice_register", owner="Finance", severity="high", affected_count=int(xa),
                        title=f"Xero data is {int(xa)} days behind (as of {snap.get('date')})",
-                       root_cause="The Xero / OpsDB mirror has not synced recently.",
+                       root_cause="The Xero / CompanyDB mirror has not synced recently.",
                        business_impact="Receivables and revenue figures end ~"
                                        f"{snap.get('rev_last_month_label', '?')}.",
-                       suggested_fix="Restore Xero API access, then re-sync the OpsDB mirror.",
+                       suggested_fix="Restore Xero API access, then re-sync the CompanyDB mirror.",
                        action_ref="recheck_xero", safety="manual_only", repairable=False,
                        evidence_source="live:snapshots.jsonl",
                        evidence_items=[{"metric": "Xero age (days)", "value": int(xa)},

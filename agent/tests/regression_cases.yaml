@@ -138,5 +138,5 @@ cases:
       site: Acme Group
       group_by: matrix
     not_clarification: true
-  origin: 'chat 2026-06-11 (Admin: use the weekly-report Excel layout — person rows x day DS/NS columns)'
+  origin: 'chat 2026-06-11 (the admin: use the weekly-report Excel layout — person rows x day DS/NS columns)'
   added: '2026-06-11'

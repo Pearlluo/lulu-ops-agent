@@ -1,0 +1,62 @@
+name: Deploy lulu-app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/agent/**"
+      - "deploy/**"
+      - ".github/workflows/deploy-app.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: deploy-app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: yourregistry.azurecr.io/lulu-app:gh-${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # users.yaml is gitignored (contains password hashes); restore it so the
+      # image bakes the login users, same as local builds always did.
+      - name: Restore users.yaml
+        run: printf '%s' "$LULU_USERS_YAML" > data/agent/users.yaml
+        env:
+          LULU_USERS_YAML: ${{ secrets.LULU_USERS_YAML }}
+
+      # data/gold is not in git: the baked lake is only a first-boot seed — the
+      # running app pulls fresh gold from blob (blob_gold.py). Empty dir is fine.
+      - name: Build image in ACR
+        run: |
+          mkdir -p data/gold
+          az acr build -r yourregistry -t "$IMAGE" -f deploy/Dockerfile .
+
+      - name: Roll out to Container App
+        run: az containerapp update -n lulu-app -g lulu-rg --image "$IMAGE"
+
+      - name: Roll out MCP gateway (same image, gateway command)
+        run: az containerapp update -n lulu-mcp -g lulu-rg --image "$IMAGE"

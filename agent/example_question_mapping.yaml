@@ -82,13 +82,13 @@ examples:
     answer_format: "Total hours for the month (sum across sites), broken down by site."
 
   # ---- Project ----
-  - question: "How many jobs does Ironclad have, how many active?"
+  - question: "How many jobs does BHP have, how many active?"
     domain: Project
     gold_table: project_job_summary
     sql: |
       SELECT project_name, client_name, job_count, active_job_count
       FROM read_parquet('gold/project_job_summary.parquet')
-      WHERE client_name ILIKE '%ironclad%'
+      WHERE client_name ILIKE '%bhp%'
       LIMIT 100;
     answer_format: "Per-project job_count and active_job_count for the client; sum if they want a total."
 
@@ -170,7 +170,7 @@ examples:
       LIMIT 100;
     answer_format: "If caller lacks Finance: return supplier + count + dates only and say amounts need Finance role. Else SUM(computed_total)."
 
-  - question: "What's the day rate for a Boilermaker on the Ironstone project?"
+  - question: "What's the day rate for a Boilermaker on the Ironbridge project?"
     domain: Commercial
     gold_table: rate_card
     role_required: Finance
@@ -178,7 +178,7 @@ examples:
       -- day_shift_rate requires Finance role
       SELECT rate_title, project_name, day_shift_rate, night_shift_rate
       FROM read_parquet('gold/rate_card.parquet')
-      WHERE project_name ILIKE '%ironstone%' AND rate_title ILIKE '%boiler%'
+      WHERE project_name ILIKE '%ironbridge%' AND rate_title ILIKE '%boiler%'
       LIMIT 100;
     answer_format: "Rate value if Finance role; otherwise refuse and state Finance role required."
 

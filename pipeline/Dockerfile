@@ -5,8 +5,8 @@ FROM python:3.11-slim
 # nest two levels so the scripts' DATA_DIR (SCRIPT_DIR.parent.parent) resolves to /app/lulu,
 # i.e. bronze/silver/gold get written under /app/lulu/* on the container's ephemeral disk.
 WORKDIR /app/lulu/api
-RUN pip install --no-cache-dir \
-    requests python-dotenv pandas pyarrow azure-storage-blob
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # scripts only (no credential/.env — env vars are provided by the Container Apps Job)
 COPY *.py ./

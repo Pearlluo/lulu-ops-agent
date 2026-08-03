@@ -1,0 +1,74 @@
+# event_registry.yaml — Lulu's proactive rules: nobody asks, she checks anyway.
+# Evaluated by daily_brief.py (07:00 daily, after the nightly lake refresh).
+# Each rule: metric (computed in daily_brief.collect_metrics) + condition -> alert.
+# severity: red = act today, amber = this week, info = awareness.
+
+notify:
+  from: test@yourtenant.example        # Graph sendMail sender (test mailbox while in testing)
+  to:
+    - admin@yourtenant.example
+  subject_prefix: "Lulu Daily Brief"
+
+rules:
+  workforce_risk_high:
+    metric: workforce_risk
+    op: ">="
+    threshold: 50
+    severity: red
+    message: "{value} rostered-worker × expired-cert combinations in the last 30 days — re-validate before deployment."
+
+  certs_expiring_week:
+    metric: expiring_7d
+    op: ">="
+    threshold: 5
+    severity: amber
+    message: "{value} certificates expire within 7 days — book renewals now (list in the brief)."
+
+  deployable_pool_thin:
+    metric: deployable
+    op: "<="
+    threshold: 10
+    severity: amber
+    message: "Only {value} fully-compliant field workers are deployable right now — thin replacement pool."
+
+  supplier_risk_concentrated:
+    metric: top_supplier_expired
+    op: ">="
+    threshold: 100
+    severity: amber
+    message: "Supplier {top_supplier_name} concentrates {value} expired certs — raise it at the next supplier review."
+
+  weekly_hours_swing:
+    metric: hours_wow_change_pct
+    op: "abs>="
+    threshold: 30
+    severity: amber
+    message: "Actual worked hours moved {value:+.0f}% week-on-week ({hours_prev:,.0f}h → {hours_last:,.0f}h) — check rosters/timesheets."
+
+  data_quality_not_ok:
+    metric: sentinel_status
+    op: "!="
+    threshold: "OK"
+    severity: red
+    message: "Data quality sentinel reports {value} — numbers below may be unreliable. See data_quality_report.json."
+
+  roster_horizon_short:
+    metric: roster_horizon_days
+    op: "<"
+    threshold: 60
+    severity: red
+    message: "Roster data only extends {value} days ahead — the extraction window problem may be back."
+
+  gold_stale:
+    metric: gold_age_hours
+    op: ">"
+    threshold: 30
+    severity: amber
+    message: "Local Gold data is {value:.0f}h old — the refresh may have failed (or run daily_brief with --refresh-from-blob)."
+
+  xero_sync_stale:
+    metric: xero_age_days
+    op: ">"
+    threshold: 14
+    severity: amber
+    message: "Xero financial data is {value} days behind (sync stopped ~April) — Commercial numbers are stale until the sync is fixed."

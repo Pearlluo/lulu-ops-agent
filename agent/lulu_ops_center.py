@@ -168,8 +168,8 @@ code{ color:#9bf0c8; }
 </style>""", unsafe_allow_html=True)
 
 
-# login wall disabled — default to Admin / Admin_IT (re-enable with require_login() later)
-user = {"name": "Admin", "email": "admin@company.com.au", "role": "Admin_IT"}
+# login wall disabled — default to the admin / Admin_IT (re-enable with require_login() later)
+user = {"name": "the admin", "email": "admin@yourtenant.example", "role": "Admin_IT"}
 
 
 # ---------------- cached singletons ----------------
@@ -1820,7 +1820,7 @@ else:
                                "learned": r.get("learned")} for s, r in rules.items()],
                              use_container_width=True, hide_index=True)
             else:
-                st.caption("None yet — tell Lulu e.g. 'NWM requires: VOC, WAH, Driver Licence'")
+                st.caption("None yet — tell Lulu e.g. 'FMG requires: VOC, WAH, Driver Licence'")
             st.markdown("**Definitions**")
             for t, d in cm.get("definitions", {}).items():
                 st.caption(f"• **{t}** = {d.get('meaning')}")

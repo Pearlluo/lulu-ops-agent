@@ -42,6 +42,18 @@ def _matrix_markdown(rows, days, max_rows=40):
 class TimesheetTool(BaseTool):
     name = "timesheet"
 
+    # Freshness contract, stated on every result so the model never invents a
+    # sync story: the LAKE reloads OPMS+BMS nightly; only the sign-out gap
+    # deduction is a weekly batch.
+    SNAPSHOT_CAVEAT = ("Data = nightly lake snapshot (refreshed 02:00 Perth). OPMS entries made "
+                       "after that (e.g. today's hours) appear after the next refresh — use "
+                       "get_live_worker_hours for real-time OPMS numbers. The sync is NIGHTLY; "
+                       "only the sign-out gap deduction runs as a weekly batch.")
+
+    def _with_snapshot_caveat(self, res):
+        res.caveats.append(self.SNAPSHOT_CAVEAT)
+        return res
+
     def get_weekly_timesheet(self, date_from=None, date_to=None, worker_id=None, worker_name=None,
                              project=None, site=None, group_by=None, user_role="default"):
         """Daily ACTUAL hours (GitHub weekly-timesheet automation logic, computed in the lake):
@@ -100,7 +112,8 @@ class TimesheetTool(BaseTool):
                 md = _matrix_markdown(tr.data, days)
                 return (f"Weekly timesheet {rng}: {tr.row_count} person-rows, {total:,.1f} actual hours. "
                         f"(weekly-report layout: per person, day columns DS/NS, totals)\n\n{md}")
-            return self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum_m)
+            return self._with_snapshot_caveat(
+                self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum_m))
 
         if group_by == "worker":
             sql = ("SELECT opms_employee_id, first_name, last_name, position_name, "
@@ -117,16 +130,18 @@ class TimesheetTool(BaseTool):
                        f"{tr.data[0]['actual_hours']:,.1f}h." if tr.data else "")
                 return (f"Weekly timesheet {rng}: {tr.row_count} workers, {total:,.1f} actual hours "
                         f"(one row per person: days worked + roster/gap/actual totals).{top}")
-            return self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum_w)
+            return self._with_snapshot_caveat(
+                self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum_w))
 
         if group_by == "day":
             sql = ("SELECT work_date, COUNT(DISTINCT opms_employee_id) AS workers, "
                    "SUM(actual_hours) AS actual_hours "
                    f"FROM weekly_timesheet{where} GROUP BY work_date ORDER BY work_date")
-            return self._query("get_weekly_timesheet", args, sql, user_role,
-                               summarise=lambda tr: f"Daily totals {rng}: "
-                               + ", ".join(f"{r['work_date']}: {r['actual_hours']:,.0f}h"
-                                           for r in tr.data[:7]) + ".")
+            return self._with_snapshot_caveat(
+                self._query("get_weekly_timesheet", args, sql, user_role,
+                            summarise=lambda tr: f"Daily totals {rng}: "
+                            + ", ".join(f"{r['work_date']}: {r['actual_hours']:,.0f}h"
+                                        for r in tr.data[:7]) + "."))
 
         sql = ("SELECT opms_employee_id, first_name, last_name, position_name, supplier_name, "
                "project_name, site_name, "
@@ -144,7 +159,8 @@ class TimesheetTool(BaseTool):
                     f"{total:,.1f} actual hours" + (f" ({gaps:,.1f}h gap deducted)" if gaps else "")
                     + ". actual = OPMS-matched hours minus gap deductions (weekly automation logic)." + capped)
 
-        return self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum)
+        return self._with_snapshot_caveat(
+            self._query("get_weekly_timesheet", args, sql, user_role, summarise=_sum))
 
     def get_worker_hours(self, worker_id=None, worker_name=None, month=None, year=None, user_role="default"):
         w = []

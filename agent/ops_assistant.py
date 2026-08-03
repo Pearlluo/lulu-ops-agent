@@ -31,7 +31,7 @@ TABLE_SOURCE = {
     "job_detail": "SharePoint/BMS", "hseq_register": "SharePoint/BMS",
     "asset_register": "SharePoint/BMS", "hardware_register": "SharePoint/BMS",
     "inventory_summary": "SharePoint/BMS",
-    # Xero / OpsDB (finance)
+    # Xero / CompanyDB (finance)
     "invoice_register": "Xero", "revenue_summary": "Xero", "purchase_summary": "Xero",
     "executive_snapshot": "Xero",
 }

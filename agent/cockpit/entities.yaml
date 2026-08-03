@@ -37,7 +37,7 @@ entities:
   containers:      {label: "Containers",          parent_system: blob, agent: ops,  type: file_area,       business_purpose: "3 storage containers"}
   uploads:         {label: "Uploads",             parent_system: blob, agent: ops,  type: workflow,        business_purpose: "Inbound uploads"}
   raw_files:       {label: "Raw Files",           parent_system: blob, agent: ops,  type: file_area,       business_purpose: "Raw rates / resume files"}
-  # ---- OpsDB (Operations) ----
+  # ---- CompanyDB (Operations) ----
   sql_tables:      {label: "SQL Tables",          parent_system: sql,  agent: ops,  type: table,           business_purpose: "Serverless SQL tables"}
   refresh_jobs:    {label: "Refresh Jobs",        parent_system: sql,  agent: ops,  type: workflow,        business_purpose: "Scheduled refresh jobs"}
   schema_health:   {label: "Schema Health",       parent_system: sql,  agent: ops,  type: module,          business_purpose: "Schema-drift checks"}

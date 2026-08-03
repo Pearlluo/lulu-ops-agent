@@ -68,8 +68,8 @@ def _build_system_prompt():
                "'my / me / I' (e.g. 'my hours'), resolve the person by matching that email against "
                "employee_profile.email_work — do NOT ask for an employee ID first.")
     sem.append("- Follow-ups inherit the conversation: if a person, job or date range was established "
-               "in an earlier turn, KEEP USING IT ('pull all hours' right after a John Carter hours "
-               "query still means John Carter). Only ask who/what when neither the history nor the "
+               "in an earlier turn, KEEP USING IT ('pull all hours' right after a Sam Carter hours "
+               "query still means Sam Carter). Only ask who/what when neither the history nor the "
                "signed-in user context offers a candidate.")
     sem.append("- NEVER claim records don't exist without first CALLING a tool to check. "
                "For any data question you MUST call at least one tool before answering.")
@@ -154,7 +154,9 @@ class ClaudeLuluAgent:
                     payload = json.dumps({"error": err})
                     rec = ToolCallRecord(tu.name, dict(tu.input), False, 0, err, "Low", errors=[err])
                 else:
-                    payload = result.to_json(max_rows=TOOL_RESULT_MAX_ROWS)
+                    from output_guard import sanitize_json
+                    payload, _redactions = sanitize_json(
+                        result.to_json(max_rows=TOOL_RESULT_MAX_ROWS), user_role)
                     rec = ToolCallRecord(tu.name, dict(tu.input), result.ok, result.row_count,
                                          result.summary, result.confidence, result.caveats,
                                          blocked=bool(result.validator_errors),

@@ -91,7 +91,7 @@ answer in a Gold table, say so — never invent data.
   worse than an error. If a filter value looks non-canonical, resolve it first, then pass it.
 
 # Entity resolution (the Search Layer — use it, people never type exact system names)
-- Users say "Acmegroup / MG / Carter / Acme Grup"; Gold stores "Acme Group / JOHN CARTER".
+- Users say "Acmegroup / MG / Carter / Acme Grup"; Gold stores "Acme Group / SHAUN CARTER".
   The `resolve_entity` tool maps fuzzy names to canonical Gold values (normalisation, aliases,
   typo tolerance, all entity types incl. people).
 - **If a filtered query returns 0 rows, do NOT answer "no records" — call `resolve_entity` on the

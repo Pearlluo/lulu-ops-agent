@@ -22,6 +22,13 @@ roles:
     provider: openai
     model: gpt-5-mini
 
+# USD per 1M tokens — keep in sync with vendor price pages when models change.
+# Used by conversation_trace_logger to stamp an estimated cost on every trace.
+pricing:
+  claude-opus-4-8:  {in: 5.00, out: 25.00, cache_read: 0.50}
+  gpt-5-mini:       {in: 0.25, out: 2.00,  cache_read: 0.025}
+  deepseek-chat:    {in: 0.27, out: 1.10,  cache_read: 0.07}
+
 providers:
   anthropic:
     api_key_env: ANTHROPIC_API_KEY

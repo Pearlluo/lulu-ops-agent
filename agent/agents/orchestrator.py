@@ -95,6 +95,6 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("ALERTS:", ov["alerts"] or "none")
     print("\n--- routing demo ---")
-    for q in ["夜间刷新挂了吗", "NWM明天谁能去", "上周timesheet", "这条报价毛利多少", "重启lulu-app"]:
+    for q in ["夜间刷新挂了吗", "FMG明天谁能去", "上周timesheet", "这条报价毛利多少", "重启lulu-app"]:
         a, sc = o.route(q)
         print(f"  '{q}'  ->  {a.name} ({sc:.1f})")

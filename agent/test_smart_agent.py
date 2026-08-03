@@ -14,7 +14,7 @@ QUESTIONS = [
     ("Total hours worked at each site in 2024", "default"),
     ("How many hours did worker 4 work in 2024-04?", "default"),
     ("List active projects.", "default"),
-    ("How many jobs does Ironstone have?", "default"),
+    ("How many jobs does Ironbridge have?", "default"),
     ("Which active workers have no roster in the last 90 days?", "default"),
     ("Who was rostered in June 2026?", "default"),
     ("Which suppliers provide the most workers?", "default"),

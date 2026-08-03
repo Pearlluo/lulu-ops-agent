@@ -1,8 +1,10 @@
 # LuLu — Workforce Operations AI Agent
 
-A production AI operations agent for a labour-hire / mining-services business. A nightly pipeline reloads the company's rostering system and SharePoint lists into a bronze → silver → gold Parquet lake on Azure Blob; on top of that lake sits an agent that answers operational questions ("who can be deployed to site X?", "which rostered workers hold expired certs?", "what did we sign out of the store last month?") through a **hard SQL security chain — the LLM never writes free-form SQL**. It picks from ~48 registered business tools; every query those tools build is AST-validated against a semantic registry before DuckDB executes it.
+A production AI operations platform for a labour-hire / mining-services business. A nightly pipeline reloads the company's rostering system and SharePoint lists into a bronze → silver → gold Parquet lake on Azure Blob; on top of that lake sits an agent that answers operational questions ("who can be deployed to site X?", "which rostered workers hold expired certs?", "how many hours has job Y burned against its quote?") through a **hard SQL security chain — the LLM never writes free-form SQL**.
 
-> **Note:** This is a desensitised public copy. Company, client, supplier and worker names are illustrative placeholders; the data lake, logs, memory files and credentials are not included — so this copy is intentionally **not runnable as-is**. It shows the architecture and code, not live data.
+**v3** turns the single-app agent into a governed platform: a **remote MCP gateway** exposes ~61 registered business functions to any MCP client (Claude Desktop / claude.ai connectors) behind Entra ID OAuth, a **three-layer security chain** filters what each caller can see, and the first **governed write and action tools** ship with dry-run, explicit confirmation, server-side identity injection and full audit. A **Microsoft Fabric lakehouse runs in parallel** with daily parity gates against the Azure Blob lake, with CI keeping both code paths in lock-step.
+
+> **Note:** This is a desensitised public copy. Company, client, supplier and worker names are illustrative placeholders; tenant/app/workspace GUIDs are zeroed; the data lake, logs, memory files, knowledge index and credentials are not included — so this copy is intentionally **not runnable as-is**. It shows the architecture and code, not live data.
 
 ---
 
@@ -24,124 +26,124 @@ A production AI operations agent for a labour-hire / mining-services business. A
 
 ---
 
-## Architecture
+## Architecture (v3)
 
 ```mermaid
 flowchart TD
-    subgraph DATA ["Data layer — nightly full refresh (Azure Container Apps Job, 02:00 Perth)"]
+    subgraph DATA ["Data layer — nightly full refresh (Azure Container Apps Job, 02:00 local)"]
         OPMS["Rostering system API<br/>29 endpoints"] --> BR["Bronze<br/>raw NDJSON + schema"]
         SP["SharePoint lists<br/>100+ business lists via Graph"] --> BR
-        BR --> SV["Silver<br/>16 modelled dims/facts + 1:1 mirrors"] --> GD["Gold<br/>19 denormalised wide tables<br/>(the agent's ONLY query surface)"]
+        BR --> SV["Silver<br/>modelled dims/facts"] --> GD["Gold<br/>~44 denormalised wide tables<br/>(the agent's ONLY query surface)"]
         GD --> BLOB[("Azure Blob<br/>parquet lake")]
+        GD -.-> FAB[("Microsoft Fabric Lakehouse<br/>parallel platform, daily parity gate")]
     end
 
-    GD --> CHAIN
+    BLOB -->|"hot reload<br/>(version check, 5-min TTL)"| CHAIN
 
-    subgraph CHAIN ["Security chain — the single data path"]
-        REG["agent_registry.yaml<br/>allowed fields · role gates · join keys"] --> VAL["sql_validator.py<br/>sqlglot AST · 8 hard rules<br/>SELECT-only · Gold-only · no SELECT * · forced LIMIT"]
-        VAL --> DUCK["DuckDB over gold/*.parquet"]
+    subgraph GATEWAY ["Remote MCP gateway — Azure Container App, Entra ID OAuth"]
+        JWT["JWT validation<br/>audience + approved clients"] --> IDY["identity resolution<br/>token UPN → Entra groups → role<br/>(caller can NEVER pick its own role)"]
+        IDY --> CAT["per-user dynamic tool catalogue"]
     end
 
-    CHAIN --> TOOLS["Tool layer — 10 business tools, ~48 functions<br/>people · training · roster · timesheet · project ·<br/>inventory · finance · HSEQ · cross-domain insights"]
+    CAT --> CHAIN
 
-    TOOLS --> PLAN
-
-    subgraph PLAN ["Planning — two brains, hot-swappable"]
-        DET["Deterministic planner<br/>phrase routing + meta-plans<br/>(0.1s, $0)"]
-        LLM["LLM gateway<br/>planner model picks tools,<br/>answer model polishes<br/>anthropic / openai / deepseek pluggable"]
+    subgraph CHAIN ["Three-layer security chain"]
+        L2["L2 policy engine<br/>tool_policies.yaml: role gates,<br/>per-user allowlists, confirmation flags"]
+        L1["L1 SQL validator<br/>sqlglot AST · SELECT-only · Gold-only ·<br/>field-level role gates · forced LIMIT"]
+        L3["L3 output guard<br/>rate/PII redaction by role,<br/>secret scrubbing"]
+        L2 --> L1 --> DUCK["DuckDB over gold/*.parquet"] --> L3
     end
 
-    ER["Entity resolver<br/>aliases · rapidfuzz · person names<br/>0-row rescue + search escalation"] --> PLAN
-    MEM["Memory<br/>business rules captured from chat,<br/>recalled and cross-checked against Gold"] <--> PLAN
+    L3 --> TOOLS["~61 registered functions<br/>lake reads (with data-freshness caveats) ·<br/>LIVE rostering-system reads · cloud quote reads ·<br/>governed writes & actions (dry-run → confirm →<br/>execute → read-back verify → full audit)"]
 
-    PLAN --> UI["Streamlit Ops Center<br/>Dashboard · Ask LuLu (chat) · Agent Trace"]
-    UI --> LOOP["Chat-driven optimisation loop<br/>trace log → bug inbox → regression cases"]
+    TOOLS --> CLIENTS["MCP clients<br/>Claude Desktop / claude.ai connector"]
+    TOOLS --> UI["Streamlit Ops Center<br/>Dashboard · Ask LuLu · Agent Trace"]
+
+    RAG["RAG knowledge tool<br/>company automations & rules index"] --> TOOLS
+    CAPS["Capability registry<br/>authoritative business logic<br/>(e.g. project_hours_status)"] --> TOOLS
 
     classDef source fill:#4A90D9,stroke:#2C5F8A,color:#fff
-    classDef bronze fill:#c98a4b,stroke:#8a5a2a,color:#fff
-    classDef silver fill:#9aa5b1,stroke:#5f6b78,color:#fff
-    classDef gold fill:#E8A838,stroke:#B87E20,color:#fff
     classDef lake fill:#2C3E50,stroke:#1A252F,color:#fff
     classDef guard fill:#D64550,stroke:#96222c,color:#fff
     classDef tools fill:#27AE60,stroke:#1A7A42,color:#fff
-    classDef brain fill:#8E44AD,stroke:#5E2D73,color:#fff
-    classDef helper fill:#F39C12,stroke:#B07D0E,color:#fff
-    classDef ui fill:#12958a,stroke:#0b4f4a,color:#fff
-
+    classDef gw fill:#8E44AD,stroke:#5E2D73,color:#fff
     class OPMS,SP source
-    class BR bronze
-    class SV silver
-    class GD gold
-    class BLOB lake
-    class REG,VAL,DUCK guard
+    class BLOB,FAB lake
+    class L1,L2,L3,DUCK guard
     class TOOLS tools
-    class DET,LLM brain
-    class ER,MEM helper
-    class UI,LOOP ui
-
+    class JWT,IDY,CAT gw
     style DATA fill:#eef4fb,stroke:#4A90D9,color:#1e3a5f
     style CHAIN fill:#fdeeef,stroke:#D64550,color:#7a1417
-    style PLAN fill:#f3ecf8,stroke:#8E44AD,color:#3d2e80
+    style GATEWAY fill:#f3ecf8,stroke:#8E44AD,color:#3d2e80
 ```
 
 ---
 
+## What's new in v3
+
+- **Remote MCP gateway** — the agent's tools are served over streamable-HTTP as a stateless Container App. Entra ID JWT validation (audience check + approved-client allowlist), RFC 9728 OAuth discovery so Claude Desktop connects with zero manual token handling, and a per-user tool catalogue: a Finance user and a default user literally see different tool lists.
+- **Identity is never client-supplied** — the caller's UPN and Entra groups come from the validated token; any `user_role` / caller fields sent by the client are stripped server-side and re-injected from the token. Group→role mapping uses real security groups.
+- **Three-layer security chain** — L1 field-level AST validation (existing), L2 tool-level policy engine (role-filtered discovery + dispatch re-check), L3 output guard (role-based redaction of rates/PII, secret scrubbing on every response). Every MCP call lands in an audit log with identity snapshot.
+- **Governed writes & actions** — first write capability follows a strict contract: write to the **source-of-truth system** (never a downstream copy), dry-run by default, explicit `_confirm` + reason required, server-injected caller identity, post-write read-back verification, idempotent with the nightly consolidation flow, full audit. Same contract powers a Level-2 action tool (trigger a data refresh) using the platform's managed identity — zero new secrets.
+- **Live reads beside the lake** — lake answers carry explicit data-freshness caveats; a live tool queries the rostering system directly (with the same winning-sheet dedup rules as the lake) for "right now" numbers, and a quote tool reads the cloud quoting system so quote-vs-actual comparisons use the real baseline.
+- **Gold hot-reload** — the gateway checks the lake version (5-min TTL) on request and pulls new gold parquet without a restart; a manual refresh becomes queryable minutes later.
+- **Microsoft Fabric parallel platform** — the same pipeline code runs nightly in a Fabric Lakehouse notebook; a parity gate compares every gold table row-for-row against the Blob lake daily. CI syncs pipeline code to the Lakehouse on every deploy so the two engines can never drift.
+- **CI/CD** — GitHub Actions: every push runs the full pytest suite (120+ tests), then builds/deploys the app image, the gateway and the pipeline job image, pinned to exact builds.
+- **RAG knowledge tool + capability registry** — company automations, flows and business rules are indexed for retrieval; authoritative business computations (like multi-status project hours) live in one registered implementation that every consumer must call.
+
 ## The security chain (the part I'm most proud of)
 
-The LLM **cannot** execute arbitrary SQL. The only path to data is:
+The LLM **cannot** execute arbitrary SQL — and since v3, it cannot pick who it is either. The only path to data is:
 
 ```
-business tool → controlled SQL → sql_validator.validate() → DuckDB → gold/*.parquet
+Entra token → identity → policy engine → business tool → controlled SQL
+→ sql_validator.validate() → DuckDB → gold/*.parquet → output guard
 ```
 
 - `agent_registry.yaml` declares every queryable table: its allowed fields, role-restricted fields (PII / financial / audit), and the only join keys permitted
 - `sql_validator.py` parses each statement with sqlglot and enforces 8 hard rules: SELECT-only, registered Gold tables only, allowed columns only, no `SELECT *`, forced `LIMIT`, no reads outside the lake, role gates on restricted fields
-- Roles (default / HR_Manager / Finance / Admin_IT) are supplied by the caller, never chosen by the model
-- A RAW debug channel exists for Admin_IT only: template-locked SQL, whitelisted table/column pairs, forced LIMIT, every access audit-logged
-
-## Highlights
-
-- **Deterministic + LLM dual planner** — common questions route through a zero-cost phrase planner with meta-plans that compose tools into executive reports (workforce risk, site readiness); everything else goes to a multi-provider LLM gateway where the planner model and answer model are swappable in one config line
-- **Entity resolution & search escalation** — normalisation, hand-maintained alias table, fuzzy matching (auto-accept ≥90, ask-don't-guess at 70–90), full-name resolution against a live worker vocabulary; a 0-row result is never the final answer (intent self-check → re-query with canonical names → related-table probes → diagnostic reply)
-- **Memory agent** — business rules stated in chat ("workers going to site X need certification Y") are captured, persisted, recalled on relevant questions and cross-checked against the lake
-- **Chat-driven optimisation loop** — every Q&A lands in a trace log; failures are auto-classified into a bug inbox; one command promotes a bad conversation into a permanent regression case
-- **Data quality sentinel** — post-pipeline checks on row counts, roster forward-window coverage, null rates and day-over-day KPI swings
-- **Model gateway** — anthropic (native tool-use) / openai / deepseek / any OpenAI-compatible local server, with graceful fallback; swapping brains never touches business logic
-- **Ops Center UI** — Streamlit app with a KPI dashboard, a chat page showing which tools ran and why, and a trace explorer
+- `tool_policies.yaml` + `policy_engine.py` gate whole tools by role and (for writes) per-user allowlists, confirmation and reason requirements
+- `output_guard.py` redacts role-restricted values and scrubs secret-shaped strings from every response
+- Write tools declare `writes_to` and `source_of_truth` — a write that doesn't target the source of truth fails review by design
 
 ## Repo layout
 
 ```
-agent/                  # the agent itself
-├── sql_validator.py    # AST hard gate (8 rules, 13 tests)
-├── agent_registry.yaml # semantic layer: tables, fields, roles, joins
-├── query_tool.py       # the ONLY data path (validate -> DuckDB)
-├── tools/              # 10 business tools, ~48 functions
-├── planner.py / planner_v2.py    # deterministic router + meta-plans
-├── llm_provider.py / *_provider.py / llm_agent_runner.py   # model gateway
-├── entity_resolver.py / search_escalation.py / time_entity_parser.py
-├── memory_manager.py   # capture / recall business rules
-├── lulu_ops_center.py  # Streamlit UI
-├── conversation_trace_logger.py / bug_inbox.py / regression_from_chat.py
-└── test_*.py           # per-area test suites
-pipeline/               # nightly lake refresh (Container Apps Job)
-├── extract_opms.py / extract_sharepoint_bms.py
+agent/                    # the agent + gateway
+├── mcp_http_gateway.py   # remote MCP: Entra JWT, OAuth discovery, identity
+├── mcp_server.py         # MCP core: catalogue, dispatch, caller injection
+├── policy_engine.py / tool_policies.yaml   # L2 tool-level gates
+├── output_guard.py       # L3 response redaction
+├── sql_validator.py      # L1 AST hard gate
+├── agent_registry.yaml   # semantic layer: tables, fields, roles, joins
+├── capabilities/         # registered authoritative business logic
+├── tools/                # 14 business tools (~61 functions), incl. live/write/quote/trigger
+├── knowledge_index.py / tools/knowledge_tool.py   # RAG over company rules
+├── planner.py / planner_v2.py / llm_*.py          # dual planner + model gateway
+├── entity_resolver.py / search_escalation.py / memory_manager.py
+├── lulu_ops_center.py    # Streamlit UI
+└── blob_gold.py          # gold repository + hot reload (blob / OneLake backends)
+pipeline/                 # nightly lake refresh (Container Apps Job + Fabric notebook)
+├── extract_opms.py / extract_sharepoint_bms.py / extract_bms_files.py
 ├── build_silver_gold.py / build_silver_flat.py
-├── run_pipeline.py / pipeline_guard.py / upload_to_blob.py
-└── Dockerfile / deploy_cloud.sh / REFRESH_STRATEGY.md
-deploy/                 # Streamlit app container (Azure Container Apps)
+├── run_pipeline.py / pipeline_guard.py / upload_to_blob.py / alert.py
+└── sync_fabric_code.py   # CI → Fabric Lakehouse code sync
+tests/                    # 120+ pytest cases: validator, identity, gateway,
+                          # policies, writes (fake Graph/OPMS), live dedup, parity
+.github/workflows/        # CI + app/gateway deploy + pipeline deploy
+deploy/                   # container build for app + gateway
 ```
 
 ## Technology stack
 
-- **Python** — pandas, DuckDB, sqlglot, rapidfuzz, Streamlit
-- **Azure** — Container Apps (app + scheduled job), Blob Storage (parquet lake), ACR cloud builds
-- **Microsoft Graph** — SharePoint list extraction (100+ lists)
-- **LLM** — Claude (native tool-use) with OpenAI / Deepseek / local fallbacks, config-swappable
-- **Auth** — Entra ID sign-in on the cloud app; per-user roles feed the SQL security chain
+- **Python** — pandas, DuckDB, sqlglot, rapidfuzz, Streamlit, MCP SDK
+- **Azure** — Container Apps (app + gateway + scheduled job), Blob Storage (parquet lake), ACR, Key Vault, managed identities
+- **Microsoft Fabric** — Lakehouse (parallel gold), nightly notebook, daily parity gate
+- **Microsoft Graph / Entra ID** — SharePoint extraction, OAuth for the MCP gateway, group→role mapping
+- **LLM** — Claude (native tool-use) with OpenAI / Deepseek / local fallbacks, config-swappable; also consumable from any MCP client
 
 ## Purpose
 
-Operations staff were answering the same questions every day by cross-referencing the rostering system, SharePoint registers and spreadsheets by hand. LuLu answers them in seconds — and because every answer must come through registered tools and a validated, role-gated SQL layer, giving people an AI assistant never meant giving the AI (or anyone chatting with it) uncontrolled access to workforce data.
+Operations staff were answering the same questions every day by cross-referencing the rostering system, SharePoint registers and spreadsheets by hand. LuLu answers them in seconds — and v3 extends that to the tools people already use: anyone approved can ask from Claude directly, see exactly what their role permits, and (for the pilot user) submit governed writes with a full audit trail. Giving people an AI assistant never meant giving the AI (or anyone chatting with it) uncontrolled access to workforce data.
 
 Developed for internal business use.

@@ -176,7 +176,10 @@ class LuluGatewayAgent:
                            "confidence": result.confidence,
                            "blocked": bool(result.validator_errors),
                            "data": result.data}          # full rows (UI export; stripped in traces)
-                    payload, is_err = result.to_json(max_rows=TOOL_RESULT_MAX_ROWS), not result.ok
+                    from output_guard import sanitize_json
+                    payload, _redactions = sanitize_json(
+                        result.to_json(max_rows=TOOL_RESULT_MAX_ROWS), user_role)
+                    is_err = not result.ok
                     for c in result.caveats:
                         if c not in run.caveats:
                             run.caveats.append(c)

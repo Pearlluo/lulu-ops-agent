@@ -155,8 +155,8 @@ def require_login():
         st.subheader("Initial setup — create the admin account")
         st.caption("No users yet. The first account gets the Admin_IT role and can add colleagues in-app.")
         with st.form("setup"):
-            email = st.text_input("Email", placeholder="you@company.com.au")
-            name = st.text_input("Name", placeholder="Admin Luo")
+            email = st.text_input("Email", placeholder="you@yourtenant.example")
+            name = st.text_input("Name", placeholder="The Admin")
             pw1 = st.text_input("Password", type="password")
             pw2 = st.text_input("Confirm password", type="password")
             if st.form_submit_button("Create admin ▶", type="primary"):
@@ -174,7 +174,7 @@ def require_login():
 
     st.subheader("Sign in")                       # ---- normal login ----
     with st.form("login"):
-        email = st.text_input("Email", placeholder="you@company.com.au")
+        email = st.text_input("Email", placeholder="you@yourtenant.example")
         pw = st.text_input("Password", type="password")
         if st.form_submit_button("Sign in ▶", type="primary"):
             user = verify(email, pw)

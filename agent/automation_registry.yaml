@@ -1,37 +1,37 @@
 # automation_registry.yaml — Lulu's knowledge of every GitHub automation/workflow project.
 #
-# `business:` and `logic:` blocks are HAND-MAINTAINED; `live:` blocks are
-# MACHINE-REFRESHED by `python sync_github_registry.py` — do not hand-edit.
+# `business:` and `logic:` blocks are HAND-MAINTAINED (logic extracted from actual source 2026-06-11).
+# `live:` blocks are MACHINE-REFRESHED by `python sync_github_registry.py` — do not hand-edit.
 # Consumed by tools/automation_tool.py (list / detail / find / runs).
-#
-# This public copy ships two ILLUSTRATIVE entries so the knowledge tool runs;
-# point github_owner at your org and re-sync to populate it for real.
 version: 1
-github_owner: your-github-org
-generated_from: sync_github_registry.py (gh CLI)
-last_synced: '2026-07-01T00:00:00Z'
+github_owner: yourorg
+generated_from: docs/github_inventory.md + gh CLI
+last_synced: '2026-07-20T05:00:54Z'
 automations:
   resume_weekly_sync:
-    repo: resume-sync-automation
+    repo: yourorg-resume-sync
     display_name: Resume Weekly Sync
     business:
       category: Automation / AI
       description: Automated weekly resume synchronisation pipeline.
-      purpose: 'Keeps the resume repository in Azure Blob Storage in sync with the
-        HR system''s employee documents on a weekly schedule.
+      purpose: 'Keeps the resume repository in Azure Blob Storage in sync with OPMS employee documents on a weekly
+        schedule.
+
         '
       stack:
       - Python
       - Azure Functions
+      - OPMS API
       - Azure Blob Storage
       azure_services:
       - Azure Functions
       - Azure Blob Storage
       apis:
-      - Rostering system API
+      - OPMS API
       deployment: Azure Function (timer trigger, weekly schedule)
       related_systems:
       - AI Resume Search Portal
+      - OPMS
       tool_candidates:
       - sync_resumes()
       - check_last_sync_status()
@@ -39,73 +39,973 @@ automations:
       - resume
       - resume sync
       - weekly sync
+      - 简历
+      - 简历同步
     live:
       github_description: null
       default_branch: main
-      pushed_at: '2026-06-01T00:00:00Z'
+      pushed_at: '2026-06-09T05:33:15Z'
       workflows:
-      - file: deploy.yml
+      - file: main_resumesautomation.yml
         triggers:
         - push:main
         - workflow_dispatch
-        deploys_to: resume-sync-function
+        deploys_to: resumesautomation
       latest_run:
-        workflow: Deploy to Azure Function App
-        title: Update sync window
+        workflow: Build and deploy Python project to Azure Function App - resumesautomation
+        title: Create README.md
         status: completed
         conclusion: success
-        updated_at: '2026-06-01T00:10:00Z'
-        url: https://github.com/your-github-org/resume-sync-automation/actions
+        updated_at: '2026-06-09T05:34:12Z'
+        url: https://github.com/yourorg/yourorg-resume-sync/actions/runs/27186060582
     logic:
-      schedule: Azure Function timer, Sundays 18:00 UTC
+      schedule: Azure Function timer, Sundays 18:00 UTC (NCRONTAB '0 0 18 * * SUN')
       matching:
-      - Latest resume per employee = max(last_modified_date, created_date), fallback item id
+      - Onboarding pool = OPMS /sites/employees?site_ids=11; resumes = OPMS /training/search competency_ids=2437
+        (Resume), statuses pending/completed/archived, employee batches of 50
+      - Latest resume per employee = max(last_modified_date, created_date, issue_date), fallback item id
+      - 'Change detection: skip if index/latest/{employee_id}.json already has the same document_id'
       rules:
-      - Text extracted (PyMuPDF for PDF, python-docx for DOCX)
-  weekly_timesheet:
-    repo: weekly-timesheet-automation
+      - Text extracted (PyMuPDF for PDF, python-docx for DOCX), cut at references/referees section
+      - 'On replace: delete old blobs under original/, text/, classification/ for that employee'
+      outputs: 'Blob ''resumes'': original/{emp}/resume_{emp}_{doc}.{ext}, text/.txt, index/latest/{emp}.json'
+  weekly_timesheet_automation:
+    repo: acme_weeklytimesheet_automation
     display_name: Weekly Timesheet Automation
     business:
-      category: Automation / Reporting
-      description: Weekly actual-hours calculation and report email.
-      purpose: 'Matches rostering-system timesheet entries against SharePoint rosters,
-        subtracts mid-shift gap time, emails an Excel report and writes actual hours back.
+      category: Automation
+      description: Weekly timesheet automation — processes gap deductions and finalises roster hours.
+      purpose: 'Deducts gap hours from roster hours each week; feeds finalised timesheet data into PPLTimesheets.
+
         '
       stack:
       - Python
-      - Microsoft Graph
+      - Power Automate
+      - SharePoint
+      - Azure Functions
       azure_services:
       - Azure Functions
+      - SharePoint
       apis:
-      - Rostering system API
-      - Microsoft Graph
-      deployment: Azure Function (timer trigger, Mondays)
+      - SharePoint Graph API
+      - OPMS API
+      deployment: Azure Function (timer trigger) + Power Automate Flow
       related_systems:
-      - Gap Time Tracker
+      - Gap Tracker Form
+      - Workforce Search Portal
+      - OPMS
       tool_candidates:
-      - get_last_report_status()
+      - run_weekly_timesheet()
+      - get_timesheet_status()
+      - deduct_gap_hours()
       keywords:
-      - timesheet
-      - weekly report
+      - timesheet automation
+      - gap deduction
+      - gap hours
+      - weekly timesheet
+      - 工时自动化
+      - 周报工时
+      - 扣减
     live:
       github_description: null
       default_branch: main
-      pushed_at: '2026-06-01T00:00:00Z'
+      pushed_at: '2026-06-09T05:18:42Z'
       workflows:
-      - file: deploy.yml
+      - file: main_acme-timesheet-updater.yml
         triggers:
         - push:main
-        deploys_to: timesheet-function
+        - workflow_dispatch
+        deploys_to: acme-timesheet-updater
       latest_run:
-        workflow: Deploy
-        title: Adjust gap rules
+        workflow: Build and deploy Python project to Azure Function App - acme-timesheet-updater
+        title: Create README.md
         status: completed
         conclusion: success
-        updated_at: '2026-06-01T00:10:00Z'
-        url: https://github.com/your-github-org/weekly-timesheet-automation/actions
+        updated_at: '2026-06-09T05:21:25Z'
+        url: https://github.com/yourorg/acme_weeklytimesheet_automation/actions/runs/27185542359
     logic:
-      schedule: Azure Function timer, Mondays 02:00 AWST
+      schedule: Azure Function timer, weekly, processes the last full Mon-Sun week (Perth dates)
       matching:
-      - Actual hours = roster hours minus sign-out/sign-in gap per day
+      - 'Step 1: OPMS /timesheets/entries hours summed per (employee_id, Perth date) REPLACE PPL-Rosters.Hours matched
+        on (OPMS id, Date_x0020_From); no OPMS match -> row untouched'
+      - 'Step 2 gap pairing from PPL-Timesheets: each ''Sign Out'' paired with next ''Sign In'' per OPMS; reversed
+        pairs ignored; cross-day pairs > 6h ignored; gaps split per day at midnight'
+      - 'Supplier backfill (ExtraUpdateSupplier): PPL-People.SupplierLookupId -> PPL-Rosters matched by normalized
+        OPMS (''6.0''==''6''), only rows from last 9 days, never overwrites existing supplier'
       rules:
-      - Gaps spanning midnight are split; gaps over 6h across days ignored
+      - ActualHours = max(0, RosterHours - GapHours)
+      - Z.* positions at site TRANSPORT & HIRE are plant/assets, excluded from the people report
+      - 'ShiftType: WorkType ''NIGHT SHIFT'' -> NS, else DS; weekly Excel report per person 7-day DS/NS matrix,
+        people with GrandTotal <= 0 dropped; emailed to Planning Team'
+      ported_to_lake: Gold weekly_timesheet (build_silver_gold.py:build_weekly_timesheet) — same formula, computed
+        straight from Bronze OPMS + BMS so it works even if the write-back lags
+  timesheet_rates_updater:
+    repo: yourorg-timesheet-rates
+    display_name: Timesheet Projects & Rates Updater
+    business:
+      category: Automation / Data
+      description: Updater for timesheet project and pay rate data.
+      purpose: 'Keeps JMS-Rates and project/position mappings current so Workforce Search Portal and Quote Tool
+        always use correct rates.
+
+        '
+      stack:
+      - Python
+      - Azure Functions
+      - SharePoint Graph API
+      azure_services:
+      - Azure Functions
+      - SharePoint
+      - Azure Blob Storage
+      apis:
+      - SharePoint Graph API
+      - OPMS API
+      deployment: Azure Function (timer trigger)
+      related_systems:
+      - Workforce Search Portal
+      - LabourHire Quote
+      - acme-timesheet-rates Function App
+      tool_candidates:
+      - update_rates()
+      - get_current_rates(project, shift_type)
+      keywords:
+      - rates
+      - rate update
+      - pay rate
+      - JMS-Rates
+      - 费率
+      - 费率更新
+      - 工资率
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-09T03:48:41Z'
+      workflows:
+      - file: main_acme-timesheet-rates.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: acme-timesheet-rates
+      latest_run:
+        workflow: Build and deploy Python project to Azure Function App - acme-timesheet-rates
+        title: Update main_acme-timesheet-rates.yml
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-09T03:52:02Z'
+        url: https://github.com/yourorg/yourorg-timesheet-rates/actions/runs/27182587384
+    logic:
+      schedule: 5-phase incremental pipeline (Azure Function timer), state in blob timesheethour/config/pipeline_state.json
+      matching:
+      - 'Phase 3 merge: OPMS timesheet LEFT JOIN OPMS roster on (EmployeeID, Date) attaching the resource_request
+        project string'
+      - 'Phase 4 client resolve (THE OPMS<->BMS ProjectID bridge): manual Project_Client_Map.csv exact match first;
+        else job-code prefix regex ^([A-Z]{2,4}-\d{4,6}) (''SH-25006 - July FPS'' -> ''SH-25006'') -> JMS-Jobs.JobID
+        -> ProjectLookupId -> JMS-Projects.ATitle (= client code ''C0002-Newmont'')'
+      - 'Phase 5 rates: JMS-Rates keyed (ProjectID, Position via PPL-Positions title, DS/NS); project-specific rate
+        first, else position default rate'
+      rules:
+      - 'Shift classification: WorkType ''NIGHT SHIFT'' or ending '' AM'' (FLY IN AM / DRIVE OUT AM...) -> NS, else
+        DS'
+      - 'Incremental: only (EmployeeID, Date) keys new in this run are re-merged; rows with UnitRate already set
+        are skipped'
+      outputs: blob timesheethour/data/merged.parquet (consumed by Timesheet_Search_Portal)
+      ported_to_lake: Gold project_bridge + client_name columns on roster_summary / weekly_timesheet (build_silver_gold.py:_make_client_resolver,
+        same CSV-first-then-prefix order)
+  ai_resume_screening:
+    repo: -AI-Resume-Screening-Platform
+    display_name: AI Resume Screening Platform
+    business:
+      category: AI / Web Application
+      description: AI-powered resume screening platform for workforce recruitment and compliance validation.
+      purpose: 'Extracts text from PDFs, ranks candidates by keyword and requirement match, highlights certifications,
+        generates downloadable results for recruiters.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - PyMuPDF
+      - DeepSeek API
+      - GPT-4o mini
+      - Azure Blob Storage
+      - OPMS API
+      azure_services:
+      - Azure App Service (Free1)
+      - Azure Blob Storage
+      apis:
+      - OPMS API
+      - DeepSeek API
+      - OpenAI API
+      deployment: Azure App Service (Free1)
+      related_systems:
+      - AI Resume Search Portal (WorkforceSystems)
+      - OPMS
+      - Resume Weekly Sync
+      tool_candidates:
+      - search_candidates(keywords, requirements)
+      - get_candidate_profile(name)
+      - download_highlighted_resume(candidate_id)
+      keywords:
+      - resume screening
+      - candidate
+      - recruitment
+      - AI screening
+      - 简历筛选
+      - 候选人
+      - 招聘
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T07:32:00Z'
+      workflows:
+      - file: main_ai-resume-screening-platform.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: AI-Resume-Screening-Platform
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - AI-Resume-Screening-Platform
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T07:33:44Z'
+        url: https://github.com/yourorg/-AI-Resume-Screening-Platform/actions/runs/27122666489
+    logic:
+      matching:
+      - 'Keyword boundary regex: ''(?<![a-zA-Z0-9])kw(?![a-zA-Z0-9])'' case-insensitive; ''s.NN'' also matches ''section
+        NN'''
+      - 'Hard filter: candidate must match ALL mandatory keywords'
+      - Requirement terms = top 30 non-stopword words from the job requirement
+      rules:
+      - score = keyword_hits*10 + requirement_term_hits*3, ranked desc, top 10
+      - 'Two-stage AI: DeepSeek quick-score 0-100 on all keyword-passers (5 parallel) -> top 10 -> GPT-4o-mini deep
+        analysis (3 parallel) -> top 5 with recommendation enum Strong/Good/Possible/Weak/Not Suitable'
+      - 'PII anonymised before any LLM call: names -> [CANDIDATE], emails -> [EMAIL], AU phones -> [PHONE]'
+      - Reference sections cut from text and whited-out in highlighted PDFs
+      outputs: Highlighted PDFs (keywords red, requirement terms yellow) / ZIP download
+  shift_preference:
+    repo: Shift-Preference-for-Shutdown-Staff
+    display_name: Shift Preference (Shutdown Staff)
+    business:
+      category: Internal Business Tool / Web Application
+      description: Shift preference submission form for shutdown staff — DS / NS / ANY selection.
+      purpose: 'Allows shutdown employees to submit DS/NS/ANY shift preference; auto-fills employee ID and position
+        from OPMS; writes results back to OPMS.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - Power Automate
+      - OPMS API
+      azure_services:
+      - Azure App Service
+      apis:
+      - OPMS API
+      deployment: Azure App Service
+      related_systems:
+      - OPMS
+      - Shutdown Rating Form
+      tool_candidates:
+      - get_employee_shift_preference(employee_id)
+      - submit_shift_preference(employee_id, preference)
+      keywords:
+      - shift preference
+      - DS NS
+      - day shift
+      - night shift
+      - 班次偏好
+      - 白班
+      - 夜班
+      - shutdown
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T07:14:38Z'
+      workflows:
+      - file: main_shift.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: shift
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - shift
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T07:16:06Z'
+        url: https://github.com/yourorg/Shift-Preference-for-Shutdown-Staff/actions/runs/27121901458
+    logic:
+      matching:
+      - Workers from OPMS /sites/employees?site_ids=17 (shutdown pool), keyed by employee_id; team 'ASSETS' excluded
+      rules:
+      - Shift value must be DS / NS / ANY; PATCH retried 3x
+      write_backs: OPMS PATCH /employee/{id} field additionalID8 = shift preference
+  gap_tracker_form:
+    repo: acme_weeklytimesheet_automation_form_repo1
+    display_name: Gap Tracker Form (Timesheet Form Layer)
+    business:
+      category: Automation / Web Application
+      description: Form layer for weekly timesheet automation — user-facing input component.
+      purpose: 'Front-end form that feeds data into the weekly timesheet automation pipeline; handles employee input
+        before automation processing.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - Power Automate
+      - SharePoint
+      azure_services:
+      - Azure App Service
+      - SharePoint
+      apis:
+      - SharePoint Graph API
+      deployment: Azure App Service
+      related_systems:
+      - Weekly Timesheet Automation
+      - Gap Tracker Form
+      tool_candidates:
+      - submit_timesheet_form(employee_id, hours, project)
+      keywords:
+      - gap tracker
+      - timesheet form
+      - 缺勤表
+      - 工时表单
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T06:49:09Z'
+      workflows:
+      - file: main_gaptracker.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: gaptracker
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - gaptracker
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T06:54:07Z'
+        url: https://github.com/yourorg/acme_weeklytimesheet_automation_form_repo1/actions/runs/27120848928
+    logic:
+      matching:
+      - Worker list from PPL-Rosters deduped by OPMS (keep last); vehicle rows dropped (names with digits or vehicle
+        keywords)
+      - Uniquekey = '{opms}-{YYYY/MM/DD HH:MM:SS}' Perth time
+      rules:
+      - 'Status workflow: next_action toggles Sign Out <-> Sign In; no record today -> ''Sign Out'''
+      - Sign Out after Sign Out requires a custom time for the missed Sign In (creates BOTH records); same for Sign
+        In after Sign In
+      - Supervisors = position contains manager/director/supervisor/superintendent
+      write_backs: 'Creates PPL-Timesheets items: OPMS, Date, Status(''Sign In''/''Sign Out''), Reason, Supervisor,
+        Uniquekey (this list feeds the weekly timesheet gap deduction)'
+  shutdown_rating:
+    repo: shutdown-rating
+    display_name: Shutdown Rating System
+    business:
+      category: Internal Business Tool / Web Application
+      description: Shutdown workforce performance rating and supervisor feedback system.
+      purpose: 'Supervisors rate shutdown personnel performance; system pulls active shutdown jobs from JMS, filters
+        by supervisor, saves ratings to PPLRanking, writes back to OPMS.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - SharePoint Graph API
+      - Power Automate
+      azure_services:
+      - Azure App Service (B1)
+      - SharePoint
+      apis:
+      - SharePoint Graph API
+      - OPMS API
+      deployment: Azure App Service (B1)
+      related_systems:
+      - OPMS
+      - JMS-Jobs
+      - PPLRoster
+      - PPLRanking
+      tool_candidates:
+      - get_shutdown_jobs()
+      - submit_rating(employee_id, supervisor_id, score)
+      - get_ratings_summary(shutdown_id)
+      keywords:
+      - rating
+      - performance rating
+      - supervisor feedback
+      - 评分
+      - 绩效
+      - shutdown rating
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T06:29:39Z'
+      workflows:
+      - file: main_shutdown-rating-acmegroup.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: shutdown-rating-AcmeGroup
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - shutdown-rating-AcmeGroup
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T06:35:05Z'
+        url: https://github.com/yourorg/shutdown-rating/actions/runs/27120081148
+    logic:
+      matching:
+      - Job matched by code prefix regex ^([A-Z]{2,3}-\d+) against JMSJobs.JobID
+      - Person/Supervisor matched by exact name against PPLPeople.Title -> LookupId
+      rules:
+      - 'Roster filter: only projects matching ^SH-\d+ (active shutdowns); Z.* positions dropped'
+      - Leaders (shown as supervisor pickers) = position contains SUPERVISOR/COORDINATOR/SUPERINTENDENT/MANAGER/HSE/ADVISER/SYSTEM/DATA/OPERATIONS
+      - Rating scale 1-5; duplicate submits blocked for 120s via token
+      write_backs: 'PPLRankingTX items: PersonLookupId, JobLookupId, RankingData(=rating), Comments, SupervisorLookupId'
+  timesheet_search_portal:
+    repo: Timesheet_Search_Portal
+    display_name: Timesheet Search Portal
+    business:
+      category: Data / Web Application
+      description: Enterprise workforce timesheet and cost analytics portal.
+      purpose: 'Search timesheets by employee/project/client/position; detect missing rates; generate DS/NS cost
+        reports; export to Excel.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - Azure Blob Storage
+      - SharePoint Graph API
+      - Pandas
+      - openpyxl
+      azure_services:
+      - Azure App Service (Free1)
+      - Azure Blob Storage
+      - SharePoint
+      apis:
+      - SharePoint Graph API
+      - Azure Blob Storage API
+      deployment: Azure App Service (Free1)
+      related_systems:
+      - Workforce Search Portal (WorkforceSystems)
+      - LabourHire Quote
+      - OPMS
+      tool_candidates:
+      - search_timesheets(employee, project, client)
+      - get_cost_report(client, shift_type, date_range)
+      - detect_missing_rates()
+      - export_timesheet_excel(filters)
+      keywords:
+      - timesheet search
+      - cost report
+      - missing rates
+      - 工时查询
+      - 成本报告
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T06:09:29Z'
+      workflows:
+      - file: main_workforce-analytics.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: workforce-analytics
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - workforce-analytics
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T06:11:09Z'
+        url: https://github.com/yourorg/Timesheet_Search_Portal/actions/runs/27119298206
+    logic:
+      source: blob timesheethour/data/merged.parquet (built by timesheet_rates_updater)
+      matching:
+      - Edits keyed (EmployeeID, Date[0:10]) — updates ALL rows of that worker-day
+      - 'missing-rate detection: Project/Client blank OR UnitRate null'
+      rules:
+      - Cost = hours * UnitRate; grouped Employee -> Shift(DS/NS) -> Client -> Position
+      - Cost report excludes WorkType in {ASSET DS, DAY TRIP, LEAVE, METRO, NO CHARGE TRAVEL, WORKING FROM HOME,
+        NO CHARGE, ROSTERED DAY OFF, PUBLIC HOLIDAY, NO CHARGE ASSETS}
+      - Rows without UnitRate excluded and reported as 'unmatched'
+      write_backs: Full rewrite of merged.parquet on edit; Excel export 'timesheets_export.xlsx'
+  payroll_query_system:
+    repo: payroll-query-system
+    display_name: Payroll Query System
+    business:
+      category: Internal Business Tool / Web Application
+      description: Employee payroll query submission system with attachment upload and issue tracking.
+      purpose: 'Employees submit payroll queries with supporting documents; Flow saves to SharePoint; Payroll/Admin
+        reviews and resolves.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - Power Automate
+      - SharePoint Graph API
+      azure_services:
+      - Azure App Service (B1)
+      - SharePoint
+      apis:
+      - SharePoint Graph API
+      deployment: Azure App Service (B1)
+      related_systems:
+      - Payroll Query Form (WorkforceSystems)
+      - SharePoint
+      tool_candidates:
+      - submit_payroll_query(employee_id, pay_period, query_type, description)
+      - get_query_status(query_id)
+      keywords:
+      - payroll query
+      - pay issue
+      - 工资查询
+      - 薪资问题
+      - payroll
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T05:53:31Z'
+      workflows:
+      - file: main_payroll-query-acme.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: payroll-query-acme
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - payroll-query-acme
+        title: Add or update the Azure App Service build and deployment workflow config
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T05:56:33Z'
+        url: https://github.com/yourorg/payroll-query-system/actions/runs/27118730683
+    logic:
+      rules:
+      - 'Required: name, phone, email, employer, pay period, query_type (Missing/incorrect hours, Pay rate incorrect,
+        Overtime/penalty, Allowances, Other)'
+      - Attachments max 3 files / 20MB total (pdf jpg png doc docx xls xlsx)
+      write_backs: No SharePoint storage — sends email via Graph from hr@yourtenant.example to accounts@yourtenant.example
+  labour_hire_quote:
+    repo: acme_labour_hire_quote
+    display_name: Labour Hire Quote Platform
+    business:
+      category: Web Application / Internal Business Tool
+      description: Enterprise labour hire quotation and workforce planning platform.
+      purpose: 'Select jobs from JMS; auto-retrieve project/client/contact info; calculate DS/NS costs and overtime;
+        apply pay rates and markups; generate Excel quotations; store revisions in IMS.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - SharePoint Graph API
+      - openpyxl
+      - Azure Blob Storage
+      azure_services:
+      - Azure App Service (B1)
+      - SharePoint
+      - Azure Blob Storage
+      apis:
+      - SharePoint Graph API (JMS-Jobs, JMS-Projects, JMS-Clients, JMS-Rates, PPL-People, PPL-Positions)
+      deployment: Azure App Service (B1)
+      related_systems:
+      - LabourHire Quote (WorkforceSystems)
+      - Timesheet_Search_Portal
+      - OPMS
+      tool_candidates:
+      - create_quote(job_id, client_id, roles)
+      - calculate_labour_cost(roles, rates, hours)
+      - get_quote(quote_id)
+      - export_quote_excel(quote_id)
+      keywords:
+      - quote
+      - quotation
+      - labour hire quote
+      - 报价
+      - 劳务报价
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-06-08T05:19:11Z'
+      workflows:
+      - file: main_quote-labour-hire.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: quote-labour-hire
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - quote-labour-hire
+        title: Add 3-tier ORD/OT/DT pay rates, RR Schedule PDF, redesign Shift Types
+        status: completed
+        conclusion: success
+        updated_at: '2026-06-08T05:21:51Z'
+        url: https://github.com/yourorg/acme_labour_hire_quote/actions/runs/27117620529
+    logic:
+      matching:
+      - JMS-Jobs.ProjectLookupId -> JMS-Projects (client code = ATitle); JMS-Projects.ClientLookupId -> JMS-Clients
+      - Rates from JMS-Rates keyed project+position (DayShift/NightShift), manually overridable per role
+      - Quote files detected by name 'QT-*' containing job_id in IMS 01 Acme Contracts folders
+      rules:
+      - 'Tier split per role/day: std=min(hrs,8), ot=min(hrs-8,3), dt=remainder (defaults; configurable)'
+      - 'Day type: WA public holiday table -> ph (flat rate on all hours); Sat/Sun -> weekend rates (blank = $0,
+        no weekday fallback); else weekday'
+      - client_charge = cost * multiplier (default 1.35); markup = client_labour - base_labour; GST 10%
+      - Z.* positions priced as P&E (plant), others as Labour
+      write_backs: Excel quote uploaded to IMS Operations '01 Acme Contracts/{client}/{job}/00 Commercial (Secured)/01
+        Client Quotes'; quote index in blob acme-online-quote/quotes.json
+  supervisor_portal:
+    repo: (no GitHub — deployed from Desktop\PPE\SupervisorPortal)
+    display_name: Supervisor Portal
+    business:
+      category: Internal Business Tool / Web Application
+      description: Self-service file portal for temporary shutdown supervisors — Name + 4-digit PIN login, job files
+        only.
+      purpose: 'Temporary shutdown supervisors sign in with Name + 4-digit PIN (no M365 licence needed) and can
+        browse and download only the files of jobs they are rostered on; Commercial / Secured folders are always
+        excluded. Includes a password-protected /admin panel to reset PINs, disable users and review activity.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - SQLite
+      - Microsoft Graph
+      azure_services:
+      - Azure App Service
+      apis:
+      - OPMS API
+      - Microsoft Graph
+      deployment: Azure App Service (https://acme-supervisor-portal.azurewebsites.net, B1)
+      related_systems:
+      - OPMS
+      - SharePoint BMS (PPL-People, JMS-Jobs)
+      - IMS Operations library
+      tool_candidates:
+      - list_portal_users()
+      - get_supervisor_access_window(name)
+      keywords:
+      - supervisor portal
+      - file portal
+      - PIN login
+      - job files
+      - download
+      - 主管门户
+      - 文件下载
+      - 监理
+    logic:
+      matching:
+      - Access window = OPMS /roster day with Perth date in [today, today+5]; ends after last rostered day
+      - Job = roster allocation resource_request.project first token (e.g. SH-26044); must be JMS-Jobs Active +
+        In Progress/Approved
+      - Folder = JMS-Jobs OpsFolder encoded link -> IMS/Operations drive item
+      rules:
+      - Whitelist supervisors.txt (60s reload); 5 wrong PINs = 15-min lockout; 12-hour sessions
+      - Folders named *(Secured)* / 00 Commercial* and the job's ComFolder subtree filtered on listing AND re-verified
+        on every download
+      write_backs: SQLite data/portal.db (PIN hashes + audit log of every login / download / denied attempt)
+  ppe_signout_form:
+    repo: (no GitHub — deployed from Desktop\PPE\PPEform)
+    display_name: PPE Sign-Out Form
+    business:
+      category: Internal Business Tool / Web Application
+      description: Web form for signing out PPE / workwear from a store against a contract and job, with dual signatures.
+      purpose: 'Staff sign out PPE / workwear from a store against a contract/job in three steps (details, items,
+        acceptance with issuer + receiver signatures). The app writes the stock movement back to SharePoint, deducts
+        store stock, and generates a signed sign-out PDF.
+
+        '
+      stack:
+      - Python
+      - Flask
+      - Microsoft Graph
+      azure_services:
+      - Azure App Service
+      - Azure Blob Storage
+      apis:
+      - Microsoft Graph
+      deployment: Azure App Service (https://acme-ppe-signout.azurewebsites.net, B1)
+      related_systems:
+      - SharePoint BMS (INV-Stores, INV-StoreLocations, INV-Transactions, PPL-People, JMS-Projects, JMS-Jobs)
+      - FDD-FormInbox (PowerApps form flow)
+      tool_candidates:
+      - get_store_stock(store)
+      - list_ppe_signouts(job)
+      keywords:
+      - PPE
+      - workwear
+      - sign out
+      - sign-out
+      - stock
+      - store
+      - 工服
+      - 劳保
+      - 签出
+      - 库存
+    logic:
+      matching:
+      - Items = INV-Stores rows for the chosen store with Stock > 0; jobs = In-Progress JMS-Jobs of the chosen contract
+      rules:
+      - One INV-Transactions row per item (Units, ItemLookupId, FromStoreLookupId, PersonLookupId, ToJobLookupId,
+        FormNum, CommitTime)
+      - FDD-FormInbox row logged with Closed=3 so the existing Power Automate flow does NOT re-deduct stock
+      write_backs: INV-Transactions created; INV-Stores.Stock decremented; sign-out PDF + sign-off record stored
+        (Blob/local)
+  hours_remaining:
+    repo: hours-remaining
+    display_name: Hours Remaining Tracker
+    business:
+      category: Internal Business Tool / Web Application
+      description: Quoted hours vs actual scheduled / timesheet hours per position and shift (DS / NS), with live
+        remaining balance.
+      purpose: 'Scheduled hours tracking for any job with a saved Online Quote — quoted hours draw down as OPMS
+        timesheets are entered, per position per shift. Two views: timesheet draw-down (actual used) and roster
+        forecast (used + scheduled ahead).
+
+        '
+      stack:
+      - Python
+      - Flask
+      - OPMS API
+      azure_services:
+      - Azure App Service
+      - Azure Blob Storage
+      apis:
+      - OPMS API
+      deployment: Azure App Service (https://acme-hours-remaining.azurewebsites.net, shared Online-Quote B1 plan)
+      related_systems:
+      - Labour Hire Quote Platform
+      - Shutdown Quote
+      - OPMS
+      tool_candidates:
+      - get_hours_remaining(job_id)
+      - get_position_drawdown(job_id, position)
+      keywords:
+      - hours remaining
+      - scheduled hours
+      - draw-down
+      - quote hours
+      - 剩余小时
+      - 排班小时
+      - 报价小时
+    logic:
+      matching:
+      - Quote hours from Online Quote blob (quotes.json / quote_data.json) per position per DS/NS
+      - Used = OPMS /timesheets/entries (level1 = job code, value = hours); position + shift resolved via employee+date
+        back to that day's roster allocation
+      rules:
+      - Timesheet draw-down view is the commercial truth (Toni's requirement); roster forecast view covers timesheet
+        lag
+      write_backs: none (read-only tracker; Excel download only)
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-07-17T05:44:17Z'
+      workflows:
+      - file: main_acme-hours-remaining.yml
+        triggers:
+        - push:main
+        - workflow_dispatch
+        deploys_to: acme-hours-remaining
+      latest_run:
+        workflow: Build and deploy Python app to Azure Web App - acme-hours-remaining
+        title: Source per-day hours from OPMS /timesheets/entries instead of PPL-Ros…
+        status: completed
+        conclusion: success
+        updated_at: '2026-07-17T05:48:26Z'
+        url: https://github.com/yourorg/hours-remaining/actions/runs/29558103759
+  po_tracker:
+    repo: po-tracker
+    display_name: PO Tracker (Finance)
+    business:
+      category: Finance Tool / Web Application
+      description: Finance purchase order reconciliation — Quote -> PO -> Timesheet -> Invoice per job.
+      purpose: 'Finance team imports client PO PDFs (Newmont / SAP Ariba), matches PO line items against online
+        quotations and weekly timesheet actuals, and tracks claimed amounts, invoices and remaining PO balance per
+        job. Portfolio dashboard + per-job detail, shared cloud save for the whole team.
+
+        '
+      stack:
+      - Single-file HTML/JS web app
+      - Python build script
+      - pdf.js
+      - MSAL (Entra ID sign-in)
+      azure_services:
+      - Azure Static Web Apps
+      - Azure Blob Storage
+      - Azure AI Document Intelligence
+      apis:
+      - Azure Document Intelligence (PO OCR)
+      deployment: Azure Static Web Apps (https://brave-pebble-070809600.7.azurestaticapps.net, Free)
+      related_systems:
+      - Labour Hire Quote Platform
+      - Weekly Timesheet Automation
+      tool_candidates:
+      - get_po_balance(job_id)
+      - list_unreconciled_pos()
+      keywords:
+      - PO
+      - purchase order
+      - reconciliation
+      - invoice
+      - finance
+      - 采购订单
+      - 对账
+      - 发票
+    logic:
+      matching:
+      - PO PDFs parsed in-browser (pdf.js) with Document Intelligence OCR fallback; jobs created from the online
+        quote system
+      - Timesheet actuals from ..\Azure Function Data\merged.parquet (weekly pipeline, Tue 02:00 AWST refresh)
+      rules:
+      - Reconciliation chain Quote -> PO lines -> timesheet actual hours -> invoices; remaining PO balance = PO
+        total - claimed
+      write_backs: shared save state in blob container potracker-state (storage yourstorageacct)
+    live:
+      github_description: null
+      default_branch: main
+      pushed_at: '2026-07-17T02:28:09Z'
+      workflows:
+      - file: refresh.yml
+        triggers:
+        - schedule:0 23 * * *
+        - workflow_dispatch
+      latest_run:
+        workflow: Refresh data & deploy
+        title: Refresh data & deploy
+        status: completed
+        conclusion: success
+        updated_at: '2026-07-20T00:00:16Z'
+        url: https://github.com/yourorg/po-tracker/actions/runs/29708777999
+
+# ---- Power Automate cloud flows (hand-extracted from live definitions 2026-07-29) ----
+# Enumerated via flow API from both environments (Acme Resources default + BMS).
+# These are BUSINESS LOGIC records for RAG — flow JSON lives in Power Automate itself.
+power_automate_flows:
+  site_api_opms_update_ppl_rosters:
+    display_name: Site-API-OPMS-UpdatePPLRosters
+    state: Started
+    schedule: Weekly Tuesday 02:00 AWST
+    business:
+      description: Master roster sync - pulls every employee's OPMS roster and rebuilds
+        the PPL-Rosters SharePoint list (per-day rows) that Supervisor Portal and the
+        BMS reporting stack read.
+      keywords: [roster, PPL-Rosters, supervisor portal, 排班]
+    logic:
+      steps:
+      - OPMS auth token -> GET /employee/all -> per employee GET /roster for the window
+      - Rostered days with resource_request_allocations -> project text from first allocation
+      - Site derived from project-code prefix rules (e.g. TH- -> Transport & Hire), validated
+        against the Sites list (929365cc)
+      - Missing day-rows created in PPL-Rosters (bec15b46); a cleanup loop deletes stale rows
+      notes: PPL-Rosters is the per-day roster source of truth for the portal; Hours=0 rows
+        can appear here (known quirk consumed downstream by LuLu).
+  distinct_ppl_rosters_data:
+    display_name: Distinct PPL-Rosters Data
+    state: Started
+    schedule: Daily 04:00 AWST
+    business:
+      description: Dedupes the PPL-Rosters list daily over a rolling window (14 days back
+        to tomorrow) so double-created roster rows do not double count.
+      keywords: [roster, dedupe, PPL-Rosters]
+    logic:
+      steps:
+      - Key = lower(trim(concat(OPMS id + date + project fields)))
+      - First occurrence kept (appended to seen array); duplicate rows deleted from the list
+  jms_rates_update:
+    display_name: JMS-Rates-update
+    state: Started
+    schedule: Daily
+    business:
+      description: Refreshes JMS-Rates rows (31ac4d9f) with the correct charge/pay rates -
+        project-specific rates when the item is linked to a project, otherwise position
+        default rates.
+      keywords: [rates, JMS-Rates, charge rate, 费率]
+    logic:
+      steps:
+      - For each JMS-Rates item resolve ProjectID from the Project lookup
+      - Linked to project -> rates read from project-rates list (87dc45bc)
+      - No project -> default rates from Positions list (fa1724a9)
+      - PatchItem writes the resolved rates back onto the JMS-Rates row
+  update_xerocc:
+    display_name: Update XeroCC
+    state: Started
+    schedule: Daily 02:00 UTC
+    business:
+      description: Copies the Xero cost-centre/tracking code from JMS-Projects (02b62491)
+        onto each JMS-Rates row so invoicing exports carry the right Xero coding.
+      keywords: [Xero, cost centre, JMS-Projects, invoicing]
+    logic:
+      steps:
+      - For each JMS-Rates item look up its project in JMS-Projects
+      - If found, PatchItem writes the Xero CC fields onto the JMS-Rates row
+  ranking_flow_updated:
+    display_name: Ranking Flow Updated
+    state: Started
+    schedule: Daily 02:00 UTC
+    business:
+      description: Computes each worker's average performance ranking from supervisor
+        ranking transactions and maintains the consolidated Ranking list (00000000).
+      keywords: [ranking, worker ranking, performance, 评分]
+    logic:
+      steps:
+      - Read RankingTX transactions (00000000); keep rows with non-empty RankingData
+      - Per person map to OPMS id via lookup list (00000000)
+      - RankingData is comma-separated scores -> average formatted to 2dp
+      - Consolidated row written to Ranking list; stale duplicate rows deleted
+      notes: Feeds gold worker_ranking via the LuLu pipeline; get_worker_ranking is
+        HR_Manager/Admin_IT-gated in tool_policies.
+  ranking_data_opms:
+    display_name: Ranking Data OPMS
+    state: Started
+    schedule: Daily 02:00 UTC
+    business:
+      description: Pushes the consolidated average ranking from the Ranking list back
+        into OPMS employee records (PATCH /employee/{id}).
+      keywords: [ranking, OPMS, writeback]
+    logic:
+      steps:
+      - OPMS auth token -> for each Ranking row PATCH api.opms.com.au/employee/{OPMS id}
+      notes: The only FLOW that writes into OPMS. LuLu's governed submit_worker_rating
+        tool writes a PPL-RankingTX transaction (source of truth) and immediately pushes
+        the same recomputed average to OPMS, so this flow's nightly run is idempotent
+        with LuLu-submitted ratings.
+  update_recent_positions_from_opms:
+    display_name: Update recent positions from OPMS
+    state: Stopped
+    schedule: (was) Daily
+    business:
+      description: One-way sync of OPMS positions visible on registration into the BMS
+        Positions list (fa1724a9); currently stopped.
+      keywords: [positions, OPMS]
+    logic:
+      steps:
+      - GET /positions -> filter visible_on_registration -> create missing Position rows
+  auto_archived_files:
+    display_name: Auto Achived files
+    state: Stopped
+    schedule: (was) On new file in IMS site, poll 5 min
+    business:
+      description: Auto-created archive folders for new files on the IMS SharePoint site;
+        currently stopped.
+      keywords: [archive, IMS, sharepoint]
+    logic:
+      steps: [New file trigger -> condition -> CreateNewFolder in IMS library]
+  fdd_sub_render_pdf_v2:
+    display_name: Copy of - FDD-Sub-RenderPDFV2(FormId)
+    state: Stopped
+    environment: BMS (8769c194)
+    business:
+      description: Child flow that renders an FDD form submission to PDF - Excel template
+        + Office Script fill + OneDrive convert-to-PDF, including embedded images; currently
+        stopped (copy of the production renderer).
+      keywords: [FDD, PDF render, forms]
+    logic:
+      steps:
+      - Manual (child-flow) trigger with FormId -> GetItem from FDD-FormInbox
+      - Images extracted from form JSON, large images thumbnailed via OneDrive
+      - FDD-RenderFormTemplate.xlsx filled by FDD-RenderForm.osts Office Script
+      - OneDrive ConvertFile -> PDF -> saved back to BMS; temp Excel deleted

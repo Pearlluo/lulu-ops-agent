@@ -32,7 +32,7 @@ CALLS = [
     ("timesheet", "get_timesheet_summary", {"by": "month"}),
     ("timesheet", "top_workers_by_hours", {"top_n": 5}),
     ("project", "get_active_projects", {}),
-    ("project", "get_project_jobs", {"client": "Ironstone"}),
+    ("project", "get_project_jobs", {"client": "Ironbridge"}),
     ("project", "get_job_detail", {"client": "ChemCo", "active_only": True}),
     ("project", "get_site_assignments", {"site": "TESTSITE"}),
     ("inventory_asset", "search_assets", {"term": "generator"}),

@@ -94,7 +94,7 @@ var SYS={
   lake:{label:'Data Lake',type:'store',shape:'store',status:'warning',metric:'19 GOLD TABLES',sync:'02:00',used:'LuluAgent',alert:'silver/flat layer stale — refresh fix verifying; Gold still current'},
   functions:{label:'Azure Functions',type:'auto',shape:'hex',status:'warning',metric:'10 JOBS',sync:'02:00',used:'Timesheet·Rates·Resume',alert:'lulu-refresh OOM fixed (FDD), verifying tonight'},
   blob:{label:'Azure Blob',type:'store',shape:'store',status:'healthy',metric:'3 CONTAINERS',sync:'02:00',used:'Rates·Resumes'},
-  sql:{label:'OpsDB',type:'store',shape:'store',status:'healthy',metric:'SERVERLESS SQL',sync:'AUTO',used:'Automations'},
+  sql:{label:'CompanyDB',type:'store',shape:'store',status:'healthy',metric:'SERVERLESS SQL',sync:'AUTO',used:'Automations'},
   ims:{label:'IMS',type:'data',shape:'chip',status:'healthy',metric:'FILE STORAGE',sync:'LIVE',used:'Job folders',kind:'ims'},
   fds:{label:'FDS',type:'data',shape:'chip',status:'warning',metric:'FORMS · 955MB',sync:'02:00',used:'Form distribution',alert:'FDD-FormInbox oversized (955MB) — RAG planned'},
   papp:{label:'Power Apps',type:'auto',shape:'hex',status:'healthy',metric:'FORMS FRONT-END',sync:'LIVE',used:'FDS'},
@@ -303,7 +303,7 @@ function renderContent(top){
     +'<div class="stat ok"><div class="n">'+nFixed+'</div><div class="l">Fixed</div></div>'
     +'</div>'
     +'<div class="bar"><i style="width:'+pOk+'%;background:#3fae74"></i><i style="width:'+pB+'%;background:#ff5d6c"></i><i style="width:'+pM+'%;background:#a98bff"></i></div>'
-    +'<div class="note"><b>'+d.broken+' broken links</b> = <b>stale</b>: the contract folder was renamed/renumbered (e.g. "C0003 Ironstone"→"C0003 Hancock"; "00 Commercial"→"01 Commercial (Secured)"). The folder still exists at the new path — the stored link points at the old one. <b>Fix:</b> re-run the MFS folder flow on the job (finds folder by ID, rewrites the current link). '
+    +'<div class="note"><b>'+d.broken+' broken links</b> = <b>stale</b>: the contract folder was renamed/renumbered (e.g. "C0003 Ironbridge"→"C0003 Harrington"; "00 Commercial"→"01 Commercial (Secured)"). The folder still exists at the new path — the stored link points at the old one. <b>Fix:</b> re-run the MFS folder flow on the job (finds folder by ID, rewrites the current link). '
       +(d.missing>0?'The <b>'+d.missing+'</b> empty links never got created — likely a required field was left blank.':'')+'</div>';
   // per-item problem table
   function cell(it,c){var s=it.cells[c];var col=s==='ok'?'#5fce95':(s==='broken'?'#ff6b78':'#8a9ab0');

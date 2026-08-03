@@ -26,13 +26,13 @@ def show(tag, r):
     if r.memory_used:
         print(f"  memory used: {r.memory_used}")
 
-print("== Scenario 1: teach NWM's rule once ==")
-r1 = agent.ask("NWM要求: VOC, WAH, Driver Licence")
+print("== Scenario 1: teach FMG's rule once ==")
+r1 = agent.ask("FMG要求: VOC, WAH, Driver Licence")
 show("teach", r1)
-check(1, "statement classified as site_rule and persisted", r1.function == "site_rule" and "NWM" in r1.answer.upper())
+check(1, "statement classified as site_rule and persisted", r1.function == "site_rule" and "FMG" in r1.answer.upper())
 
 print("\n== Scenario 2: ask later — Lulu applies the rule WITHOUT re-explaining ==")
-r2 = agent.ask("谁明天可以去NWM？")
+r2 = agent.ask("谁明天可以去FMG？")
 show("apply", r2)
 check(2, "memory-driven staffing (rule recalled, certs checked against Gold)",
       r2.function == "site_staffing_by_rule" and "voc" in str(r2.args).lower())
@@ -49,11 +49,11 @@ show("verify", r4)
 check(5, "answer enriched with remembered flag", any("WL Casual" in m for m in r4.memory_used))
 check(6, "current data still verified (not just memory)", "WL - Casual" in r4.answer or "WL Casual" in r4.answer)
 
-print("\n== Scenario 5: Ironclad rule (the admin's second example) ==")
-agent.ask("Ironclad requires Confined Space, Gas Test")
-r5 = agent.ask("Who is ready to go to Ironclad?")
-show("ironclad", r5)
-check(7, "Ironclad rule learned & applied", r5.function == "site_staffing_by_rule" and "confined" in str(r5.args).lower())
+print("\n== Scenario 5: BHP rule (the admin's second example) ==")
+agent.ask("BHP requires Confined Space, Gas Test")
+r5 = agent.ask("Who is ready to go to BHP?")
+show("bhp", r5)
+check(7, "BHP rule learned & applied", r5.function == "site_staffing_by_rule" and "confined" in str(r5.args).lower())
 
 print("\n== Scenario 6: definitions + chit-chat hygiene ==")
 r6 = agent.ask("active worker 的定义是 roster in the last 90 days")
@@ -63,8 +63,8 @@ check(9, "chit-chat NOT stored as knowledge", r7.function != "fact" and "已记"
 
 print("\n== Scenario 7: memory survives a restart (new agent instance) ==")
 agent2 = LuluAgent()
-r8 = agent2.ask("who can go to NWM?")
-check(10, "fresh instance still knows NWM's rule (persisted YAML)",
+r8 = agent2.ask("who can go to FMG?")
+check(10, "fresh instance still knows FMG's rule (persisted YAML)",
       r8.function == "site_staffing_by_rule")
 
 print("\n== Scenario 8: conversation memory builds a profile ==")

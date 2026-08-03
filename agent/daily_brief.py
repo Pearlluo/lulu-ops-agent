@@ -188,7 +188,7 @@ def build_brief(metrics, alerts, today=None):
     today = today or dt.date.today()
     m = metrics
     deltas = trend_deltas(metrics, today)
-    L = [f"# Lulu Daily Brief — {today:%a %d %b %Y}", "", "Good morning Admin,", ""]
+    L = [f"# Lulu Daily Brief — {today:%a %d %b %Y}", "", "Good morning the admin,", ""]
 
     # ---- Lulu's executive summary ----
     if alerts:
@@ -266,7 +266,7 @@ def send_email(subject, markdown_body, registry):
     cid = os.getenv("SHAREPOINT_CLIENT_ID")
     sec = os.getenv("SHAREPOINT_CLIENT_SECRET")
     notify = registry.get("notify") or {}
-    sender = os.getenv("GRAPH_SENDER", notify.get("from", "test@company.com.au"))
+    sender = os.getenv("GRAPH_SENDER", notify.get("from", "test@yourtenant.example"))
     recipients = notify.get("to") or []
     if not (tenant and cid and sec and recipients):
         return False, "missing Graph credentials or recipients"

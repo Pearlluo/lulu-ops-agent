@@ -1,0 +1,84 @@
+# Business Capability Registry v0（平台基线 §15）
+# MCP 只暴露经治理的业务能力；每个 capability 是"业务上完成什么"的权威定义。
+# v0 登记 3 个只读能力；写类能力（approve_* 等）按 §25/§36 流程在 Phase 3 加入。
+
+version: 0.1
+updated: "2026-07-29"
+
+capabilities:
+
+  project_hours_status:
+    display_name: "Project Hours Status"
+    business_purpose: >
+      单一权威口径回答"这个 Job/项目做了多少小时、排了多少、还剩多少"。
+      区分 Scheduled / Actual(day/night) / Quote / Invoiced 状态，绝不合并成
+      一个含糊的 worked hours 数字（基线 §17/§18）。
+    business_owner: "The Admin"
+    technical_owner: "The Admin"
+    supported_entities: [job, project]
+    implementation: "capabilities/project_hours_status.py::compute"
+    exposed_as_tool: project_hours_status
+    authoritative_source: "gold: job_detail, roster_summary, weekly_timesheet"
+    canonical_logic: >
+      job_code -> job_detail -> project_name；Scheduled = roster_summary.hours 按
+      project 求和（past/future 拆分）；Actual = weekly_timesheet.actual_hours
+      （shift_type 拆 day/night）；Quote/Invoiced 字段在数据可用前必须显式返回
+      insufficient_data，禁止用其他数字顶替。
+    preconditions: ["job_code 在 job_detail 中存在"]
+    warning_conditions: ["future roster 存在但 quote 基准缺失", "actual 与 roster 差异 > 10%"]
+    blocking_conditions: []
+    allowed_roles: all
+    allowed_groups: []
+    project_scope: caller-scoped (Phase 2 governed views)
+    data_classification: Internal
+    risk_level: read
+    requires_confirmation: false
+    requires_approval: false
+    idempotency: pure-read
+    retry: safe
+    rollback: n/a
+    data_freshness: "nightly lake refresh (02:00 AWST) — 结果必须带 as_of"
+    v_version: "0.1"
+    effective_date: "2026-07-29"
+    test_cases: "tests/test_capabilities.py"
+    monitoring: "mcp_audit.jsonl + conversation traces"
+    retirement_status: active
+    known_gaps:
+      - "quote/approved hours 需 fact_quote_hours（合同 v1.1，Phase 2）"
+      - "submitted vs approved 拆分需 silver fact_timesheet.status 升入 gold"
+      - "invoiced hours 被 Xero API 权限阻塞"
+      - "hours 按 project 归集（OPMS 按 site/project 记工时，非 job 粒度）"
+
+  search_timesheets:
+    display_name: "Search Timesheets"
+    business_purpose: "按人/站点/项目/期间查询工时（去重后的 winning-sheet 口径）"
+    business_owner: "The Admin"
+    technical_owner: "The Admin"
+    supported_entities: [employee, site, project]
+    implementation: "tools/timesheet_tool.py (get_worker_hours / get_site_hours / get_project_hours / get_weekly_timesheet)"
+    exposed_as_tool: [get_worker_hours, get_site_hours, get_project_hours, get_weekly_timesheet]
+    authoritative_source: "gold: weekly_timesheet, timesheet_summary"
+    canonical_logic: "R0 winning-sheet 去重（docs/timesheet_domain_contract.md §5）"
+    allowed_roles: all
+    data_classification: Internal
+    risk_level: read
+    v_version: "0.1"
+    effective_date: "2026-07-29"
+    retirement_status: active
+
+  check_worker_site_readiness:
+    display_name: "Worker Site Readiness"
+    business_purpose: "某人能否进入某 Site 工作：证书有效性 + 合规派生"
+    business_owner: "The Admin"
+    technical_owner: "The Admin"
+    supported_entities: [employee, site]
+    implementation: "tools/training_tool.py::check_worker_compliance + tools/insight_tool.py::site_compliance_report"
+    exposed_as_tool: [check_worker_compliance, site_compliance_report, find_deployable_workers]
+    authoritative_source: "gold: training_compliance, site_assignment"
+    canonical_logic: "合规为派生值：证书 is_expired=true 即不合规（无独立 is_compliant 标志）"
+    allowed_roles: all
+    data_classification: Internal
+    risk_level: read
+    v_version: "0.1"
+    effective_date: "2026-07-29"
+    retirement_status: active

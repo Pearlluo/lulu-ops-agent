@@ -12,7 +12,7 @@ nodes:
   lake: {label: "Data Lake",     type: platform,    agent: biz,  business_purpose: "Gold tables the agent queries"}
   blob: {label: "Azure Blob",    type: platform,    agent: ops,  business_purpose: "Rates / resume storage"}
   functions: {label: "Azure Functions", type: automation, agent: ops, business_purpose: "Nightly refresh + automations"}
-  sql:  {label: "OpsDB",       type: platform,    agent: ops,  business_purpose: "Serverless SQL for automations"}
+  sql:  {label: "CompanyDB",       type: platform,    agent: ops,  business_purpose: "Serverless SQL for automations"}
   flows: {label: "Power Automate", type: automation, agent: ops, business_purpose: "Folder / sync flows"}
   ims:  {label: "IMS",           type: data_source, agent: file, business_purpose: "Job folder file storage"}
   fds:  {label: "FDS",           type: data_source, agent: file, business_purpose: "Form distribution"}

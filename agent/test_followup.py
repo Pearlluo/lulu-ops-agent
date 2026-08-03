@@ -52,8 +52,8 @@ run_conversation([
         "T4 person swap keeps the time window", r.function == "get_weekly_timesheet"
         and r.args.get("worker_name") == "CARTER" and r.args.get("date_from") == LM + "-01",
         str(r.args))),
-    ("what about JONES?", lambda r: check(
-        "T5 English person swap", r.args.get("worker_name") == "JONES", str(r.args))),
+    ("what about MULHERN?", lambda r: check(
+        "T5 English person swap", r.args.get("worker_name") == "MULHERN", str(r.args))),
 ])
 
 print("— conversation 2: roster follow-up —")

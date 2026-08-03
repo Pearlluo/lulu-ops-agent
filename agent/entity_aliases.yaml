@@ -1,7 +1,8 @@
-# entity_aliases.yaml — hand-maintained abbreviations -> canonical Gold entity names.
+# entity_aliases.yaml — hand-maintained abbreviations / nicknames -> canonical Gold entity names.
 # Used by entity_resolver.py (step 2, after exact-normalised match, before fuzzy).
+# Keys are case/space-insensitive. Add a line whenever the team uses a name Gold doesn't know.
 aliases:
-  AG: Acme Group
+  MG: Acme Group
   acme: Acme Group
   WL: Westlake
   T&H: Transport & Hire

@@ -8,8 +8,18 @@ PyYAML==6.0.3
 python-dotenv==1.0.1
 pandas==3.0.2
 pyarrow==24.0.0
+# duckdb needs pytz to materialise TIMESTAMPTZ columns; pandas 3 no longer drags it in
+pytz==2025.2
 plotly==6.8.0
 rapidfuzz==3.14.5
 PyMuPDF==1.27.2.3
 openpyxl==3.1.5
 azure-storage-blob==12.28.0
+# OneLake backend (GOLD_BACKEND=onelake) — lazy-imported, harmless while on blob
+azure-identity==1.19.0
+azure-storage-file-datalake==12.17.0
+# MCP HTTP gateway (remote multi-user MCP with Entra auth)
+# starlette comes as an mcp dependency — do not pin it separately
+mcp>=1.2,<2
+PyJWT[crypto]==2.9.0
+uvicorn>=0.30

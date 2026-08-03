@@ -15,7 +15,7 @@ getval(){ python -c "from dotenv import dotenv_values;print(dotenv_values('$ENVF
 RG=${RG:-lulu-rg}
 LOC=${LOC:-australiaeast}
 # reuse a previously-created ACR if present, else make one
-ACR=${ACR:-$( [ -f .acr_name ] && cat .acr_name || echo agentacr$RANDOM )}
+ACR=${ACR:-$( [ -f .acr_name ] && cat .acr_name || echo yourregistry$RANDOM )}
 ENVN=${ENVN:-lulu-env}
 JOB=${JOB:-lulu-refresh}
 echo "RG=$RG LOC=$LOC ACR=$ACR ENVN=$ENVN JOB=$JOB"
@@ -56,7 +56,7 @@ az containerapp job create \
       BLOB_CONNECTION_STRING=secretref:blobconn \
       OPMS_CLIENT_ID=secretref:opmsid \
       OPMS_CLIENT_SECRET=secretref:opmssecret \
-      OPMS_TENANT=your_opms_tenant \
+      OPMS_TENANT=webportal_production \
       SHAREPOINT_TENANT_ID=secretref:sptid \
       SHAREPOINT_CLIENT_ID=secretref:spcid \
       SHAREPOINT_CLIENT_SECRET=secretref:spcsecret \

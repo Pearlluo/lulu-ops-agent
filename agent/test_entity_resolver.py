@@ -28,7 +28,7 @@ r = resolve("Acme Grup")
 check("'Acme Grup' fuzzy >= 90 auto-match", r["status"] == "fuzzy"
       and r["match"]["value"] == "Acme Group", str(r))
 r = resolve("Carter")
-check("'Carter' -> person JOHN CARTER", r["match"] and r["match"]["type"] == "person"
+check("'Carter' -> person SHAUN CARTER", r["match"] and r["match"]["type"] == "person"
       and "CARTER" in r["match"]["value"], str(r))
 r = resolve("Transport and Hire")
 check("'and' == '&' normalisation", r["match"] and r["match"]["value"] == "Transport & Hire", str(r))

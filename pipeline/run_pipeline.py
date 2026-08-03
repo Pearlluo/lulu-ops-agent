@@ -114,4 +114,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as ex:                     # SystemExit from step() included
+        if isinstance(ex, SystemExit) and ex.code in (0, None):
+            raise
+        import traceback
+        from alert import send_alert
+        send_alert(
+            "❌ lulu-refresh pipeline FAILED",
+            f"The nightly Lulu lake refresh failed at {datetime.now(timezone.utc).isoformat()}.\n\n"
+            f"{ex}\n\n{traceback.format_exc()[-1500:]}\n\n"
+            "Check: az containerapp job execution list -n lulu-refresh -g lulu-rg",
+        )
+        raise

@@ -1,11 +1,27 @@
 """Finance domain — purchase_summary / rate_card. Amounts & rates require the Finance role
 (the validator enforces this; the tool degrades gracefully for default users)."""
 
-from ._base import BaseTool
+from ._base import BaseTool, ToolResult
 
 
 class FinanceTool(BaseTool):
     name = "finance"
+
+    def _invoice_query(self, function, args, sql, user_role, summarise=None):
+        """invoice_register is not in the lake yet (Xero source unconnected) and DuckDB
+        RAISES CatalogException for a missing table — turn that into an honest
+        insufficient-data answer instead of a crashed tool call."""
+        try:
+            return self._query(function, args, sql, user_role, summarise=summarise)
+        except Exception as e:
+            if "invoice_register" not in str(e):
+                raise
+            res = ToolResult(tool=self.name, function=function, args=args, sql=sql)
+            res.summary = "insufficient_data: invoice_register not loaded (Xero not connected)."
+            res.caveats = ["Invoice data is NOT in the lake yet — the Xero source is not "
+                           "connected (known gap). No invoiced/outstanding figures exist; "
+                           "do not substitute other numbers."]
+            return res
 
     def get_purchase_summary(self, supplier=None, user_role="default"):
         w = f" WHERE supplier_name ILIKE '%{self.esc(supplier)}%'" if supplier else ""
@@ -60,15 +76,15 @@ class FinanceTool(BaseTool):
             sql = ("SELECT invoice_number, contact_name, job_code, invoice_date, due_date, "
                    "total, amount_due "
                    f"FROM invoice_register{where} ORDER BY due_date")
-            return self._query("get_outstanding_invoices", {"client": client}, sql, user_role,
-                               summarise=lambda tr: f"{tr.row_count} outstanding invoice(s), "
-                               f"A${sum(r['amount_due'] or 0 for r in tr.data):,.0f} due. "
-                               "Xero data ends ~2026-04.")
+            return self._invoice_query("get_outstanding_invoices", {"client": client}, sql, user_role,
+                                       summarise=lambda tr: f"{tr.row_count} outstanding invoice(s), "
+                                       f"A${sum(r['amount_due'] or 0 for r in tr.data):,.0f} due. "
+                                       "Xero data ends ~2026-04.")
         sql = ("SELECT invoice_number, contact_name, job_code, invoice_date, due_date "
                f"FROM invoice_register{where} ORDER BY due_date")
-        return self._query("get_outstanding_invoices", {"client": client}, sql, user_role,
-                           summarise=lambda tr: f"{tr.row_count} authorised invoice(s) "
-                           "(amounts require the Finance role).")
+        return self._invoice_query("get_outstanding_invoices", {"client": client}, sql, user_role,
+                                   summarise=lambda tr: f"{tr.row_count} authorised invoice(s) "
+                                   "(amounts require the Finance role).")
 
     def get_project_revenue(self, job_code, user_role="default"):
         """Revenue invoiced against one job code (mined from invoice references)."""
@@ -78,17 +94,17 @@ class FinanceTool(BaseTool):
                    "SUM(amount_due) AS outstanding FROM invoice_register "
                    "WHERE invoice_type = 'ACCREC' AND status IN ('AUTHORISED', 'PAID') "
                    f"AND job_code ILIKE '%{j}%' GROUP BY job_code, contact_name ORDER BY invoiced DESC")
-            return self._query("get_project_revenue", {"job_code": job_code}, sql, user_role,
-                               summarise=lambda tr: (f"Job {tr.data[0]['job_code']}: "
-                                                     f"A${tr.data[0]['invoiced'] or 0:,.0f} invoiced over "
-                                                     f"{int(tr.data[0]['invoices'])} invoice(s)."
-                                                     if tr.data else f"No invoices reference job '{job_code}'."))
+            return self._invoice_query("get_project_revenue", {"job_code": job_code}, sql, user_role,
+                                       summarise=lambda tr: (f"Job {tr.data[0]['job_code']}: "
+                                                             f"A${tr.data[0]['invoiced'] or 0:,.0f} invoiced over "
+                                                             f"{int(tr.data[0]['invoices'])} invoice(s)."
+                                                             if tr.data else f"No invoices reference job '{job_code}'."))
         sql = ("SELECT job_code, contact_name, COUNT(*) AS invoices FROM invoice_register "
                f"WHERE invoice_type = 'ACCREC' AND job_code ILIKE '%{j}%' "
                "GROUP BY job_code, contact_name")
-        return self._query("get_project_revenue", {"job_code": job_code}, sql, user_role,
-                           summarise=lambda tr: f"{tr.row_count} job match(es) "
-                           "(amounts require the Finance role).")
+        return self._invoice_query("get_project_revenue", {"job_code": job_code}, sql, user_role,
+                                   summarise=lambda tr: f"{tr.row_count} job match(es) "
+                                   "(amounts require the Finance role).")
 
     def get_rate_card(self, project=None, position=None, user_role="default"):
         w = []

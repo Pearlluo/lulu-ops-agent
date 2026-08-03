@@ -1,0 +1,47 @@
+{
+  "checked_at": "2026-06-29T09:11:13+00:00",
+  "JMS-Jobs": {
+    "checked": 1551,
+    "ok": 1551,
+    "broken": 0,
+    "missing": 0,
+    "problem_items": 0,
+    "byCol": {
+      "OpsFolder": {
+        "broken": 0,
+        "missing": 0
+      },
+      "ComFolder": {
+        "broken": 0,
+        "missing": 0
+      },
+      "PlanningFolder": {
+        "broken": 0,
+        "missing": 0
+      }
+    },
+    "items": []
+  },
+  "JMS-Projects": {
+    "checked": 216,
+    "ok": 216,
+    "broken": 0,
+    "missing": 0,
+    "problem_items": 0,
+    "byCol": {
+      "OpsFolder": {
+        "broken": 0,
+        "missing": 0
+      },
+      "ComFolder": {
+        "broken": 0,
+        "missing": 0
+      },
+      "PlanningFolder": {
+        "broken": 0,
+        "missing": 0
+      }
+    },
+    "items": []
+  }
+}

@@ -24,6 +24,40 @@ from pathlib import Path
 AGENT_DIR = Path(__file__).resolve().parent
 TRACE_PATH = AGENT_DIR / "logs" / "conversation_traces.jsonl"
 
+_pricing_cache = None
+
+
+def _pricing():
+    global _pricing_cache
+    if _pricing_cache is None:
+        import yaml
+        try:
+            reg = yaml.safe_load(open(AGENT_DIR / "model_registry.yaml", encoding="utf-8"))
+            _pricing_cache = reg.get("pricing") or {}
+        except Exception:
+            _pricing_cache = {}
+    return _pricing_cache
+
+
+def estimate_cost(tokens, model_label):
+    """USD estimate from a {in, out, cache_read} token dict and a 'provider/model' label.
+
+    Tokens are aggregated per RUN (planner + answer models combined); everything is
+    priced at the planner model's rate — the planner drives the tool loop and
+    dominates usage, the answer model adds one short polish call.
+    Returns None when the model has no pricing entry (unknown = don't guess)."""
+    if not tokens:
+        return None
+    model = str(model_label or "").split("/")[-1].split(" ")[0]
+    price = next((p for name, p in _pricing().items() if name in model), None)
+    if price is None:
+        return None
+    tin = tokens.get("in", tokens.get("input", 0)) or 0
+    tout = tokens.get("out", tokens.get("output", 0)) or 0
+    tcache = tokens.get("cache_read", 0) or 0
+    return round((tin * price.get("in", 0) + tout * price.get("out", 0)
+                  + tcache * price.get("cache_read", 0)) / 1_000_000, 6)
+
 
 class TraceLogger:
     def __init__(self, path=TRACE_PATH):
@@ -64,7 +98,7 @@ class TraceLogger:
             tools_called=[{"tool": s.get("tool"), "function": s.get("function"),
                            "ok": s.get("ok"), "rows": s.get("rows")} for s in resp.step_results],
             memory_used=resp.memory_used, latency_ms=round((time.time() - t0) * 1000, 1),
-            planner_model="deterministic", answer_model="deterministic", tokens={}, cost=None)
+            planner_model="deterministic", answer_model="deterministic", tokens={}, cost=0.0)
 
     def log_gateway(self, run, user="admin", conversation_id=None, turn=None):
         """run = llm_agent_runner.GatewayRunResult"""
@@ -82,7 +116,8 @@ class TraceLogger:
             memory_used=[],
             latency_ms=round(run.duration_s * 1000, 1),
             planner_model=run.planner_model, answer_model=run.answer_model,
-            tokens=getattr(run, "tokens", {}) or {}, cost=None)
+            tokens=getattr(run, "tokens", {}) or {},
+            cost=estimate_cost(getattr(run, "tokens", {}) or {}, run.planner_model))
 
     # ---------------- read ----------------
     def read(self, last_n=None):

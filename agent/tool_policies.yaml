@@ -1,0 +1,136 @@
+# tool_policies.yaml — MCP/agent TOOL-level authorisation + output policy.
+#
+# Layer 2 of 3 in the security chain:
+#   1. sql_validator / agent_registry — FIELD-level gating inside SQL (unchanged)
+#   2. this file                      — which tools a role can SEE and CALL
+#   3. output_guard                   — value-level redaction before results leave
+#
+# Roles MUST match agent_registry.yaml (default / HR_Manager / Finance / Admin_IT).
+# A tool not listed under `tools:` inherits `defaults:` (visible to every role —
+# correct for read-only operational tools whose sensitive fields are already
+# validator-gated). The model NEVER decides permissions; deciding happens here,
+# server-side, keyed on the caller's resolved role.
+#
+# Future write/action tools must declare risk_level + requires_confirmation —
+# the engine refuses to dispatch a write-risk tool that lacks explicit policy.
+
+version: 2
+
+roles: [default, HR_Manager, Finance, Admin_IT]
+
+# ---- identity resolution (§3/§5): Entra groups -> role ----
+identity:
+  role_precedence: [Admin_IT, Finance, HR_Manager, default]
+  group_role_map:
+    # Keys match case-insensitively against BOTH forms a caller's groups arrive in:
+    # display names (Graph transitiveMemberOf) and object IDs (JWT groups claim —
+    # tokens carry GUIDs only, so every mapping needs its ID row).
+    ORG-Super User:  Admin_IT
+    00000000-0000-4000-a000-000000000003: Admin_IT   # ORG-Super User
+    ORG-Finance:     Finance
+    00000000-0000-4000-a000-000000000004: Finance    # ORG-Finance
+    ORG-HR:          HR_Manager
+    00000000-0000-4000-a000-000000000005: HR_Manager # ORG-HR
+    # ORG-Directors is mapped by object ID ONLY (no name key): the tenant has a
+    # second group with the same display name (2f1d74b8…) that also contains the
+    # automation service account — a name key would let it inherit Admin_IT.
+    00000000-0000-4000-a000-000000000006: Admin_IT  # ORG-Directors (Sam/Ben/Lee only)
+    # project/site groups (Project-2317, Site-*) become ABAC row filters when
+    # governed views land in Fabric — they do not map to a whole role.
+
+# ---- client approval (§6/§11): unknown AI clients are rejected ----
+# The connecting client declares itself via LULU_MCP_CLIENT (set in .mcp.json /
+# gateway config). Absent or unlisted -> every tool call is denied.
+approved_clients:
+  - claude-code
+  - claude-desktop
+  - lulu-internal
+  # remote gateway clients are identified by validated Entra app id (azp claim)
+  - "entra:00000000-0000-4000-a000-000000000007"   # Azure CLI (pre-authorized, for testing)
+  - "entra:00000000-0000-4000-a000-000000000002"   # LuLu MCP Claude Client (Claude Desktop/claude.ai OAuth)
+
+defaults:
+  allowed_roles: all
+  risk_level: read            # read | export | create | update | approve | delete
+  requires_confirmation: false
+  audit_level: standard       # standard | full
+
+tools:
+  # ---- Finance domain: tool-level visibility restricted, not just fields ----
+  get_purchase_summary:     {allowed_roles: [Finance, Admin_IT]}
+  get_client_revenue:       {allowed_roles: [Finance, Admin_IT]}
+  get_outstanding_invoices: {allowed_roles: [Finance, Admin_IT]}
+  get_project_revenue:      {allowed_roles: [Finance, Admin_IT]}
+  get_rate_card:            {allowed_roles: [Finance, Admin_IT], audit_level: full}
+
+  # ---- HR-restricted ----
+  get_worker_ranking:       {allowed_roles: [HR_Manager, Admin_IT], audit_level: full}
+
+  # ---- Ops/automation estate: admin only over MCP ----
+  get_automation_runs:      {allowed_roles: [Admin_IT]}
+
+  # ---- Governed WRITE actions (§25/§26). allowed_users is an AND-gate on top
+  # ---- of roles: only the named UPNs may call, however privileged the role.
+  # ---- Design rule: writes_to must equal source_of_truth (write at the head
+  # ---- of the data flow, never a downstream copy the nightly flows rebuild).
+  trigger_automation:
+    risk_level: execute
+    allowed_roles: [Admin_IT]
+    allowed_users: [admin@yourtenant.example]   # action pilot: the admin only
+    requires_confirmation: true
+    requires_reason: true
+    audit_level: full
+    writes_to: Azure Container Apps job start (registered allowlist, no data written)
+    source_of_truth: n/a - operational action
+
+  submit_worker_rating:
+    risk_level: update
+    allowed_roles: [Admin_IT]
+    allowed_users: [admin@yourtenant.example]   # write pilot: the admin only
+    requires_confirmation: true
+    requires_reason: true
+    injects_caller: true      # server passes the token UPN as _caller_upn (Supervisor field)
+    audit_level: full
+    writes_to: SharePoint PPL-RankingTX (+ immediate idempotent OPMS average push)
+    source_of_truth: SharePoint PPL-RankingTX
+
+  # ---- FUTURE write/action tools: full §8 schema, engine refuses to dispatch
+  # ---- any write-risk tool without an explicit entry like this ----
+  # approve_timesheet:
+  #   risk_level: approve
+  #   allowed_roles: [Finance, Admin_IT]
+  #   allowed_groups: [Timesheet-Approvers]
+  #   required_scopes: [timesheet.read, timesheet.approve]
+  #   requires_confirmation: true
+  #   requires_reason: true
+  #   audit_level: full
+
+# ---- output policy: value-level redaction (enforced by output_guard.py) ----
+output_policy:
+  # secrets are scrubbed for EVERY role, always
+  redact_always_patterns:
+    - "AccountKey=[A-Za-z0-9+/=]{20,}"
+    - "client_secret[\"'=: ]+[A-Za-z0-9~._-]{10,}"
+    - "(?i)bearer\\s+[A-Za-z0-9._-]{20,}"
+    - "sk-[A-Za-z0-9_-]{20,}"
+    - "(?i)connectionstring[\"'=: ]+\\S{20,}"
+    - "eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"   # JWT
+
+  # field-name -> roles allowed to see the VALUE (others get [REDACTED])
+  restricted_fields:
+    day_rate:        [Finance, Admin_IT]
+    night_rate:      [Finance, Admin_IT]
+    pay_rate:        [Finance, Admin_IT]
+    charge_rate:     [Finance, Admin_IT]
+    salary:          [Finance, Admin_IT]
+    amount_ex_gst:   [Finance, Admin_IT]
+    invoice_amount:  [Finance, Admin_IT]
+    date_of_birth:   [HR_Manager, Admin_IT]
+    gender_name:     [HR_Manager, Admin_IT]
+    nationality_name: [HR_Manager, Admin_IT]
+    middle_name:     [HR_Manager, Admin_IT]
+    medical_information: []          # nobody over MCP/agent output
+    bank_details: []
+    tax_file_number: []
+    personal_address: []
+    personal_phone: []

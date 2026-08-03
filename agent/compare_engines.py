@@ -1,5 +1,5 @@
 """Side-by-side: deterministic planner vs LLM gateway on the same question.
-Run:  python compare_engines.py "谁明天可以去NWM？"
+Run:  python compare_engines.py "谁明天可以去FMG？"
       python compare_engines.py "Which supplier has the biggest compliance risk?" Finance
 """
 import sys, time

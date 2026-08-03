@@ -94,6 +94,15 @@ SPEC = [
       "site": ("string", False, "Site name keyword", None),
       "group_by": ("string", False, "'worker' = one row per person (weekly totals); 'day' = daily totals; "
                                     "omit = day-entry detail", None)}),
+    ("opms_live", "get_live_worker_hours",
+     "LIVE OPMS query — real-time worked hours for ONE worker straight from the OPMS API, bypassing "
+     "the nightly lake snapshot (02:00 Perth). Use for TODAY'S / THIS WEEK'S hours or whenever lake "
+     "data looks behind what the user sees in OPMS. Raw OPMS sheet hours: sign-out gap deductions "
+     "are NOT applied, so totals can be slightly higher than get_weekly_timesheet. Resolve the "
+     "worker id with search_employee first.",
+     {"worker_id": ("integer", True, "OPMS worker id (resolve with search_employee)", None),
+      "date_from": ("string", False, "Range start YYYY-MM-DD (default: Monday of the current Perth week)", None),
+      "date_to": ("string", False, "Range end YYYY-MM-DD (default: today in Perth)", None)}),
     ("timesheet", "get_worker_hours",
      "Total hours worked by one worker (timesheets), optionally for one month/year.",
      {"worker_id": ("integer", False, "OPMS worker id", None),
@@ -181,7 +190,7 @@ SPEC = [
      "Revenue invoiced per client (Xero sales invoices). RESTRICTED: amounts require the Finance role — "
      "other roles get invoice counts only. Use for '哪个客户收入最高 / how much have we billed <client>'. "
      "NOTE: Xero data currently ends ~April 2026 — always mention this caveat.",
-     {"client": ("string", False, "Client name keyword, e.g. 'CementCo'", None),
+     {"client": ("string", False, "Client name keyword, e.g. 'Holcim'", None),
       "year": ("string", False, "Year 'YYYY' or month 'YYYY-MM' prefix", None)}),
     ("finance", "get_outstanding_invoices",
      "Unpaid client invoices (accounts receivable), ordered by due date. RESTRICTED: amounts need Finance role.",
@@ -277,6 +286,60 @@ SPEC = [
      {"list_name": ("string", True, "FDS list name, e.g. 'workers', 'jobs', 'dailysheets', 'formdistribute'", None),
       "keyword": ("string", False, "Filter keyword matched across the list's text fields", None),
       "limit": ("integer", False, "Max rows (default 50, cap 200)", 50)}),
+
+    # ---------------- Knowledge (semantic search / RAG) ----------------
+    ("knowledge", "search_company_knowledge",
+     "Semantic search over company KNOWLEDGE (system documentation, automation registry cards, business "
+     "definitions, company memory). Use for 'how does X work', 'what system handles Y', 'what does Z mean' — "
+     "explanations and context, NOT live numbers. For counts/rows/dates use the data tools instead.",
+     {"query": ("string", True, "Natural-language question or topic, e.g. 'how does the quote tool calculate overtime'", None),
+      "top_k": ("integer", False, "How many knowledge chunks to return (default 5)", 5)}),
+
+    # ---------------- Governed business capabilities ----------------
+    ("capability", "project_hours_status",
+     "AUTHORITATIVE multi-status hours answer for one job/project: scheduled (past/future), "
+     "actual (day/night shift split), drift warnings, data freshness — never a single merged "
+     "'worked hours' number. Use for 'how many hours has SH-xxxxx done / scheduled / remaining'. "
+     "Quote/invoiced figures are reported as insufficient_data until their sources are connected.",
+     {"job_ref": ("string", True, "Job reference, e.g. 'SH-26046'", None)}),
+
+    # ---------------- Governed WRITE actions (user-gated, §25/§26) ----------------
+    ("quote", "get_quote_hours",
+     "QUOTED hours for a job from the Online Shutdown Quote tool (live from its Azure storage — "
+     "not Xero, not the lake). Per-role DS/NS/total quoted hours computed from the saved quote's "
+     "manning grid, newest version with manning wins. Use for 'SH-xxxxx 的 quote/报价 hours' and "
+     "for quote-vs-actual comparisons together with get_weekly_timesheet / get_roster_summary. "
+     "Rates are never returned.",
+     {"job_code": ("string", True, "Job code, e.g. 'SH-26046' (bare '26046' also accepted)", None)}),
+    ("trigger", "trigger_automation",
+     "OPERATIONAL ACTION (user-gated pilot): start a registered internal automation. Currently "
+     "registered: 'lulu_refresh' — full data-lake refresh (OPMS + SharePoint -> gold, ~60 min), "
+     "the same job the nightly schedule runs. Use when the user wants the lake data refreshed NOW "
+     "instead of waiting for tonight. Defaults to a DRY RUN showing the last execution; executing "
+     "needs dry_run=false, a reason, and explicit user confirmation. Refuses to start a run that "
+     "is already in progress.",
+     {"automation": ("string", True, "Registered automation key — currently only 'lulu_refresh'", None),
+      "reason": ("string", False, "Business reason for the trigger (required to execute)", None),
+      "dry_run": ("boolean", False, "Preview only — no trigger (default true)", True),
+      "_confirm": ("boolean", False, "Set true ONLY after the human user has explicitly "
+                   "approved this action in conversation — never set it on your own", None)}),
+    ("opms_write", "submit_worker_rating",
+     "WRITE ACTION (user-gated pilot): record a worker's performance rating for a specific job. "
+     "Writes a 1–5 rating transaction into SharePoint PPL-RankingTX (the source of truth the "
+     "Shutdown Rating system uses), then immediately recomputes the worker's average and pushes "
+     "it to OPMS — the same math the nightly flows run, so scheduled syncs stay consistent. "
+     "ALWAYS ask the user which job the rating is for if they did not say. Defaults to a DRY RUN "
+     "that changes nothing; executing needs dry_run=false, a reason, and explicit user "
+     "confirmation. Both records are re-read and verified after the write.",
+     {"employee_id": ("integer", True, "OPMS employee id (resolve with search_employee first)", None),
+      "job_code": ("string", True, "Exact JobID the rating is for, e.g. 'SH-26036' — "
+                   "ask the user if not stated", None),
+      "rating": ("integer", True, "Performance score, whole number 1–5", None),
+      "comments": ("string", False, "Optional supervisor comments stored with the rating", None),
+      "reason": ("string", False, "Business reason for the change (required to execute)", None),
+      "dry_run": ("boolean", False, "Preview only — no write (default true)", True),
+      "_confirm": ("boolean", False, "Set true ONLY after the human user has explicitly "
+                   "approved this action in conversation — never set it on your own", None)}),
 ]
 
 

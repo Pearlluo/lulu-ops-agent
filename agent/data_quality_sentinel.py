@@ -9,7 +9,7 @@ Checks
   1. Critical Gold tables exist and are non-empty
      (employee_profile, training_compliance, roster_summary, timesheet_summary,
       project_job_summary + weekly_timesheet, project_bridge)
-  2. roster_summary max date >= today + 60 days   (the bug Admin caught by eye)
+  2. roster_summary max date >= today + 60 days   (the bug the admin caught by eye)
   3. Row counts must not drop > 30% vs the previous report
   4. Null-rate ceilings on key columns
   5. KPI swing alarms (> 30% day-over-day): expired certs, active workers, supplier count

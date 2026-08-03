@@ -27,7 +27,7 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def log_event(issue_id, action_key, status, actor="Admin", mode=None,
+def log_event(issue_id, action_key, status, actor="the admin", mode=None,
               result=None, detail="", writes=False, extra=None):
     """Append one audit event. Returns the written record (never raises on disk error)."""
     rec = {"ts": _now(), "issue_id": issue_id, "action_key": action_key,

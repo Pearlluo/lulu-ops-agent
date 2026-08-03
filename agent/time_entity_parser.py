@@ -136,7 +136,7 @@ def time_range_label(f):
 def resolve_entity(question):
     """{'type','value'} | None — delegates to the Search Layer (entity_resolver):
     normalised match ('Acmegroup'=='Acme Group'), aliases ('MG'), fuzzy typo tolerance,
-    person names ('Carter' -> 'JOHN CARTER'). Never guesses below the auto threshold."""
+    person names ('Carter' -> 'SHAUN CARTER'). Never guesses below the auto threshold."""
     from entity_resolver import resolve_in_question
     hit = resolve_in_question(question)
     return {"type": hit["type"], "value": hit["value"]} if hit else None
@@ -146,5 +146,5 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     for q in ["上个礼拜的 Acme Group 的时间表", "last week timesheet", "tomorrow",
-              "in april 2026", "2024-05", "who can go to NWM"]:
+              "in april 2026", "2024-05", "who can go to FMG"]:
         print(f"{q!r:42} time={parse_time(q)} intent={detect_intent(q)} entity={resolve_entity(q)}")
